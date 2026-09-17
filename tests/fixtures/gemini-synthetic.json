@@ -1,0 +1,11 @@
+{
+  "id": "SYNTHETIC-gemini-example",
+  "model": "SYNTHETIC-model",
+  "status": "completed",
+  "steps": [
+    {"type": "google_search_call", "arguments": {"queries": ["CedarLamp Mini battery replacement"]}},
+    {"type": "google_search_result", "call_id": "SYNTHETIC-search", "result": [{"search_suggestions": "<div>SYNTHETIC search suggestion; stored as data</div>"}]},
+    {"type": "model_output", "content": [{"type": "text", "text": "SYNTHETIC DEMO: CedarLamp Mini has a replaceable battery. This is not a real product finding.", "annotations": [{"type": "url_citation", "url": "https://example.com/cedarlamp-mini-manual", "title": "Fictional Mini manual", "start_index": 16, "end_index": 55}]}]}
+  ],
+  "usage": {"total_input_tokens": 0, "total_output_tokens": 0, "total_tokens": 0}
+}

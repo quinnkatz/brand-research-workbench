@@ -1,0 +1,10 @@
+{
+  "id": "SYNTHETIC-openai-example",
+  "model": "SYNTHETIC-model",
+  "status": "completed",
+  "output": [
+    {"type": "web_search_call", "id": "SYNTHETIC-search", "status": "completed", "action": {"type": "search", "queries": ["CedarLamp Mini battery replacement"], "sources": [{"type": "url", "url": "https://example.com/cedarlamp-mini-manual", "title": "Fictional Mini manual"}, {"type": "url", "url": "https://example.com/cedarlamp-range", "title": "Fictional range comparison"}]}},
+    {"type": "message", "role": "assistant", "content": [{"type": "output_text", "text": "SYNTHETIC DEMO: CedarLamp Mini has a replaceable battery. This invented statement demonstrates citation inspection; it is not a real product finding.", "annotations": [{"type": "url_citation", "url": "https://example.com/cedarlamp-mini-manual", "title": "Fictional Mini manual", "start_index": 16, "end_index": 55}]}]}
+  ],
+  "usage": {"input_tokens": 0, "output_tokens": 0, "total_tokens": 0}
+}

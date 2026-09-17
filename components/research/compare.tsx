@@ -1,0 +1,21 @@
+"use client";
+import { useEffect, useState } from "react";
+import { answerOf, environments, providerNames, uniqueSources, type Run } from "@/lib/research";
+import { Choice, Field, Note, SourceLink, Status } from "./ui";
+import { displayDate } from "@/lib/client";
+import { ArrowLeftRight } from "lucide-react";
+export function ComparePage({ runs }: { runs: Run[] }) {
+  const [left, setLeft] = useState(runs[0]?.id || ""); const [right, setRight] = useState(runs[1]?.id || "");
+  useEffect(() => { setLeft(runs[0]?.id || ""); setRight(runs[1]?.id || ""); }, [runs[0]?.study_id]);
+  if (runs.length < 2) return <div className="rounded-xl border bg-white px-6 py-20 text-center"><ArrowLeftRight size={35} className="mx-auto mb-4 text-slate-300"/><h2 className="font-semibold">Two responses make a comparison</h2><p className="mx-auto mt-2 max-w-md text-sm leading-6 text-muted-foreground">Collect the same question again, or record it in a consumer app. Then inspect how the answers, conditions, and disclosed sources differ.</p></div>;
+  const a = runs.find(r => r.id === left); const b = runs.find(r => r.id === right);
+  const options: [string, string][] = runs.map(r => [r.id, `${providerNames[r.provider]} · ${displayDate(r.created_at)} · ${r.prompt.slice(0, 55)}`]);
+  const leftSources = a ? uniqueSources(a) : []; const rightSources = b ? uniqueSources(b) : []; const shared = leftSources.filter(x => rightSources.includes(x));
+  return <div className="space-y-5"><div className="grid gap-4 sm:grid-cols-2"><Field label="First response"><Choice value={left} onChange={setLeft} options={options}/></Field><Field label="Second response"><Choice value={right} onChange={setRight} options={options}/></Field></div>
+    {left === right && <Note warning>You selected the same record twice. Choose a different response to compare.</Note>}
+    {a && b && <><Note warning={a.environment !== b.environment || a.prompt !== b.prompt}>{a.environment !== b.environment ? "These responses come from different environments. A difference cannot be attributed to the underlying model alone." : a.prompt !== b.prompt ? "The questions differ. Interpret differences in the answers alongside that change." : "The question and environment match. Model, time, settings, and random variation can still affect the result. A single pair does not establish a causal effect."}</Note>
+      <div className="grid gap-4 xl:grid-cols-2">{[a, b].map((r, i) => <article key={`${r.id}-${i}`} className="min-w-0 rounded-xl border bg-white"><div className="space-y-3 border-b p-5"><div className="flex flex-wrap items-center justify-between gap-2"><h2 className="text-sm font-semibold">{providerNames[r.provider]} · {r.model}</h2><Status value={r.status}/></div><p className="text-xs text-muted-foreground">{environments[r.environment]} · {displayDate(r.created_at)}</p><p className="text-sm font-medium">{r.prompt}</p><details className="text-xs"><summary className="cursor-pointer text-muted-foreground">Compare conditions</summary><pre className="raw-json mt-2 rounded bg-slate-50 p-3">{JSON.stringify({ search: r.search, ...r.settings }, null, 2)}</pre></details></div><div className="evidence-text p-5 text-sm text-slate-700">{answerOf(r) || "No answer text available."}</div></article>)}</div>
+      <div className="grid gap-4 lg:grid-cols-3">{[["Disclosed in both", shared], ["Only in first record", leftSources.filter(x => !rightSources.includes(x))], ["Only in second record", rightSources.filter(x => !leftSources.includes(x))]].map(([title, list]) => <section key={title as string} className="rounded-xl border bg-white p-5"><h3 className="text-sm font-semibold">{title as string} <span className="ml-1 text-muted-foreground">{(list as string[]).length}</span></h3><div className="mt-4 space-y-3 text-xs">{(list as string[]).length ? (list as string[]).map(url => <div key={url}><SourceLink url={url}/></div>) : <p className="text-muted-foreground">No URLs in this group.</p>}</div></section>)}</div><p className="text-xs text-muted-foreground">Exact URL comparison. Different URL spellings and tracking parameters are kept distinct. Absence from a record does not prove a page was excluded internally.</p>
+    </>}
+  </div>;
+}
