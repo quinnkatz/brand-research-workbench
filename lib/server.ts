@@ -1,6 +1,7 @@
 import { env } from "cloudflare:workers";
 import { getChatGPTUser } from "@/app/chatgpt-auth";
 import { z } from "zod";
+import type { ResearchRecord, Run } from "./research";
 export class AppError extends Error { constructor(message: string, public status = 400) { super(message); } }
 export function db() { if (!env.DB) throw new AppError("The research database is unavailable. Please try again shortly.", 503); return env.DB; }
 export function bucket() { if (!env.BUCKET) throw new AppError("Evidence storage is unavailable. Please try again shortly.", 503); return env.BUCKET; }
@@ -40,8 +41,8 @@ export async function ownStudy(id: string, uid: string) { const result = await d
 export async function ownRun(id: string, uid: string) { const result = await db().prepare("SELECT * FROM runs WHERE id = ? AND owner_id = ?").bind(id, uid).first<Record<string, any>>(); if (!result) throw new AppError("Run not found.", 404); return result; }
 export const idSchema = z.string().uuid();
 export const urlSchema = z.string().max(2000).refine(v => { try { return ["http:", "https:"].includes(new URL(v).protocol); } catch { return false; } }, "Enter an http or https URL.");
-export function publicRun(row: Record<string, any>) { const { owner_id, evidence_key, ...safe } = row; return { ...safe, settings: JSON.parse(row.settings), normalized: row.normalized ? JSON.parse(row.normalized) : null }; }
-export function publicRecord(row: Record<string, any>) { const { owner_id, ...safe } = row; return { ...safe, payload: JSON.parse(row.payload) }; }
+export function publicRun(row: Record<string, any>): Run { const { owner_id, evidence_key, ...safe } = row; return { ...safe, settings: JSON.parse(row.settings), normalized: row.normalized ? JSON.parse(row.normalized) : null } as Run; }
+export function publicRecord(row: Record<string, any>): ResearchRecord { const { owner_id, ...safe } = row; return { ...safe, payload: JSON.parse(row.payload) } as ResearchRecord; }
 export async function hash(text: string | ArrayBuffer) { const b = typeof text === "string" ? new TextEncoder().encode(text) : text; return Array.from(new Uint8Array(await crypto.subtle.digest("SHA-256", b))).map(x => x.toString(16).padStart(2, "0")).join(""); }
 export async function saveEvidence(uid: string, id: string, evidence: unknown) {
   const text = JSON.stringify(evidence); const digest = await hash(text); const key = `${uid}/runs/${id}/original.json`;

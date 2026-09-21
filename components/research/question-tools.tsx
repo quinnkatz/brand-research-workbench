@@ -1,0 +1,16 @@
+"use client";
+import { useState } from "react";
+import { toast } from "sonner";
+import { Button } from "@/components/ui/button";
+import { Textarea } from "@/components/ui/textarea";
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { researchApi } from "@/lib/client";
+import { profileOf, starterQuestions } from "@/lib/analytics";
+import type { ResearchRecord, Study } from "@/lib/research";
+import { Choice, Field, Note } from "./ui";
+export function QuestionTools({ study, records, enabled, onRefresh }: { study: Study; records: ResearchRecord[]; enabled: boolean; onRefresh: () => Promise<void> }) {
+  const [open, setOpen] = useState(false), [busy, setBusy] = useState(false), [error, setError] = useState("");
+  const [text, setText] = useState(""), [intent, setIntent] = useState("discovery"), [origin, setOrigin] = useState("researcher");
+  async function save(questions: any[]) { setBusy(true); setError(""); try { const existing = new Set(records.filter(r => r.kind === "question").map(r => r.payload.prompt)); const unique = questions.filter((q, i) => !existing.has(q.prompt) && questions.findIndex(x => x.prompt === q.prompt) === i); if (!unique.length) { toast.info("These questions are already saved."); return; } await researchApi("questions", { studyId: study.id, questions: unique }); await onRefresh(); setOpen(false); setText(""); toast.success(`${unique.length} questions saved.`); } catch (e) { setError((e as Error).message); } finally { setBusy(false); } }
+  return <><div className="flex flex-wrap gap-2"><Button variant="outline" size="sm" disabled={!enabled || busy} onClick={() => save(starterQuestions(study.brand, profileOf(study)))}>Add starter questions</Button><Button variant="outline" size="sm" disabled={!enabled} onClick={() => setOpen(true)}>Import question list</Button></div>{error && !open && <p role="alert" className="mt-3 text-sm text-destructive">{error}</p>}<Dialog open={open} onOpenChange={v => { if (!busy) setOpen(v); }}><DialogContent className="sm:max-w-xl"><DialogHeader><DialogTitle>Import customer questions</DialogTitle><DialogDescription>One question per line, up to 100. Exact duplicates are skipped.</DialogDescription></DialogHeader><form className="space-y-5" onSubmit={e => { e.preventDefault(); void save(text.split(/\r?\n/).map(s => s.trim()).filter(Boolean).map(prompt => ({ prompt, intent, origin, notes: "", tags: [] }))); }}><Field label="Questions"><Textarea required className="min-h-44" value={text} onChange={e => setText(e.target.value)}/></Field><Choice label="Intent" value={intent} onChange={setIntent} options={["discovery", "comparison", "verification", "purchase", "support"].map(x => [x, x])}/><Choice label="Where these came from" value={origin} onChange={setOrigin} options={[["customer", "Actual customer questions"], ["researcher", "Researcher scenarios"], ["ai_suggested", "AI suggestions"]]}/><Note>Template and suggested questions are research scenarios, not evidence of search volume or customer demand.</Note>{error && <p role="alert" className="text-sm text-destructive">{error}</p>}<Button type="submit" disabled={busy}>{busy ? "Importing…" : "Save questions"}</Button></form></DialogContent></Dialog></>;
+}

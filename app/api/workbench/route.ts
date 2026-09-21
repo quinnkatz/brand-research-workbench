@@ -3,6 +3,7 @@ import { validAnchor } from "@/lib/claims";
 import type { Run } from "@/lib/research";
 import { AppError, boundedText, bucket, db, failure, idSchema, jsonBody, ownRun, ownStudy, owner, publicRecord, publicRun, reply, saveEvidence, urlSchema } from "@/lib/server";
 import { endpoints, makeRequest, normalize, providerHeaders } from "@/lib/providers";
+import { publicStudy } from "@/lib/research-server";
 import type { Normalized, Provider } from "@/lib/research";
 export const dynamic = "force-dynamic";
 const providerSchema = z.enum(["openai", "anthropic", "gemini"]);
@@ -10,24 +11,25 @@ const text = (max = 10000) => z.string().trim().min(1).max(max);
 const exactText = (max: number) => z.string().min(1).max(max).refine(v => !!v.trim(), "Text cannot be blank.");
 const optionalText = (max = 10000) => z.string().max(max).default("");
 const factSchema = z.object({ claim: text(4000), product: optionalText(300), source: urlSchema, excerpt: text(8000), checkedAt: text(50), status: z.enum(["verified", "needs_review", "disputed"]), notes: optionalText(8000) });
-const questionSchema = z.object({ prompt: exactText(12000), intent: z.enum(["discovery", "comparison", "verification", "purchase", "support"]), notes: optionalText(4000) });
+const questionSchema = z.object({ prompt: exactText(12000), intent: z.enum(["discovery", "comparison", "verification", "purchase", "support"]), notes: optionalText(4000), origin: z.enum(["customer", "researcher", "template", "ai_suggested"]).default("researcher"), tags: z.array(text(60)).max(12).default([]) });
 const reviewSchema = z.object({ runId: idSchema, claim: exactText(6000), anchor: z.object({ segmentIndex: z.number().int().min(0), start: z.number().int().min(0), end: z.number().int().min(1) }).nullable().optional(), impact: optionalText(4000), recommendation: optionalText(8000), verdict: z.enum(["supported", "contradicted", "uncertain", "omitted"]), evidenceLevel: z.enum(["observed", "inferred", "experimentally_supported", "unknown"]), materiality: z.enum(["low", "medium", "high"]), factIds: z.array(idSchema).max(50), explanation: text(10000), hypothesis: optionalText(8000), nextTest: optionalText(8000) });
 
 async function studyData(studyId: string, uid: string) {
   await ownStudy(studyId, uid);
-  const [records, runs] = await Promise.all([
+  const [records, runs, count] = await Promise.all([
     db().prepare("SELECT * FROM records WHERE study_id = ? AND owner_id = ? ORDER BY created_at DESC").bind(studyId, uid).all(),
     db().prepare("SELECT * FROM runs WHERE study_id = ? AND owner_id = ? ORDER BY created_at DESC LIMIT 500").bind(studyId, uid).all(),
+    db().prepare("SELECT count(*) AS n FROM runs WHERE study_id = ? AND owner_id = ?").bind(studyId, uid).first<any>(),
   ]);
-  return { records: records.results.map(publicRecord), runs: runs.results.map(publicRun) };
+  return { records: records.results.map(publicRecord), runs: runs.results.map(publicRun), totalRuns: Number(count?.n || 0) };
 }
 export async function GET(req: Request) {
   try {
     const uid = await owner(req); const params = new URL(req.url).searchParams; const action = params.get("action") || "state";
     if (action === "state") {
-      const studies = await db().prepare("SELECT id, name, brand, website, objective, created_at FROM studies WHERE owner_id = ? ORDER BY created_at DESC").bind(uid).all();
+      const studies = await db().prepare("SELECT id, name, brand, website, objective, profile, created_at FROM studies WHERE owner_id = ? ORDER BY created_at DESC").bind(uid).all();
       const id = params.get("studyId") || (studies.results[0]?.id as string | undefined);
-      return reply({ studies: studies.results, studyId: id || null, ...(id ? await studyData(idSchema.parse(id), uid) : { records: [], runs: [] }) });
+      return reply({ studies: studies.results.map(publicStudy), studyId: id || null, ...(id ? await studyData(idSchema.parse(id), uid) : { records: [], runs: [] }) });
     }
     if (action === "run") {
       const row = await ownRun(idSchema.parse(params.get("id")), uid);
@@ -43,7 +45,7 @@ export async function GET(req: Request) {
     }
     if (action === "export") {
       const studyId = idSchema.parse(params.get("studyId")); const study = await ownStudy(studyId, uid);
-      const data = await studyData(studyId, uid); const { owner_id, ...safeStudy } = study;
+      const data = await studyData(studyId, uid); const safeStudy = publicStudy(study);
       // Full originals are downloaded individually to keep large studies safe to export.
       return reply({ format: "brand-research-workbench", version: 1, exportedAt: new Date().toISOString(), study: safeStudy, ...data,
         note: "Structured study export (up to 500 latest runs). Original provider responses and attachments are available in each run's Evidence tab." });
@@ -83,9 +85,14 @@ export async function POST(req: Request) {
         Object.assign(payload, { factSnapshots });
       }
       if (id) {
-        const old = await db().prepare("SELECT id FROM records WHERE id = ? AND owner_id = ? AND study_id = ? AND kind = ?").bind(id, uid, studyId, kind).first();
+        const old = await db().prepare("SELECT * FROM records WHERE id = ? AND owner_id = ? AND study_id = ? AND kind = ?").bind(id, uid, studyId, kind).first<any>();
         if (!old) throw new AppError("Record not found.", 404);
-        await db().prepare("UPDATE records SET payload = ?, updated_at = ? WHERE id = ? AND owner_id = ?").bind(JSON.stringify(payload), now, id, uid).run();
+        if (body.expectedUpdatedAt && body.expectedUpdatedAt !== old.updated_at) throw new AppError("This record changed in another session. Refresh before saving.", 409);
+        const result = await db().batch([
+          db().prepare("INSERT INTO record_history (id, record_id, owner_id, study_id, kind, payload, recorded_at) SELECT ?, id, owner_id, study_id, kind, payload, ? FROM records WHERE id = ? AND owner_id = ? AND updated_at = ?").bind(crypto.randomUUID(), now, id, uid, old.updated_at),
+          db().prepare("UPDATE records SET payload = ?, updated_at = ? WHERE id = ? AND owner_id = ? AND updated_at = ?").bind(JSON.stringify(payload), now, id, uid, old.updated_at),
+        ]);
+        if (result[1].meta.changes !== 1) throw new AppError("This record changed in another session. Refresh before saving.", 409);
         return reply({ id });
       }
       const newId = crypto.randomUUID();
@@ -95,7 +102,7 @@ export async function POST(req: Request) {
     if (body.action === "models") {
       const { provider, key } = z.object({ provider: providerSchema, key: z.string().trim().min(10).max(512) }).parse(body);
       const url = provider === "openai" ? "https://api.openai.com/v1/models" : provider === "anthropic" ? "https://api.anthropic.com/v1/models?limit=1000" : "https://generativelanguage.googleapis.com/v1beta/models?pageSize=1000";
-      const res = await fetch(url, { headers: providerHeaders(provider, key), redirect: "error", signal: AbortSignal.timeout(20000) });
+      const res = await fetch(url, { headers: providerHeaders(provider, key), redirect: "manual", signal: AbortSignal.timeout(20000) });
       if (!res.ok) { await res.body?.cancel(); throw new AppError(`The provider returned HTTP ${res.status}. Check the API key, account access, and billing settings.`, 400); }
       const raw = JSON.parse(await boundedText(res.body));
       const models = (provider === "gemini" ? raw.models || [] : raw.data || []).map((m: any) => ({ id: String(m.id || m.name || "").replace(/^models\//, ""), name: String(m.display_name || m.displayName || m.id || m.name || "") })).filter((m: any) => m.id).sort((a: any, b: any) => a.id.localeCompare(b.id));
@@ -129,7 +136,7 @@ export async function POST(req: Request) {
       await db().prepare("INSERT INTO runs (id, owner_id, study_id, provider, environment, model, prompt, status, search, settings, created_at) VALUES (?, ?, ?, ?, 'api', ?, ?, 'running', ?, ?, ?)").bind(id, uid, base.studyId, v.provider, base.model, base.prompt, v.search, JSON.stringify(settings), now).run();
       let responseText: string | null = null; let httpStatus: number | null = null;
       try {
-        const response = await fetch(endpoints[v.provider], { method: "POST", headers: providerHeaders(v.provider, key), body: JSON.stringify(request), redirect: "error", signal: AbortSignal.timeout(150000) });
+        const response = await fetch(endpoints[v.provider], { method: "POST", headers: providerHeaders(v.provider, key), body: JSON.stringify(request), redirect: "manual", signal: AbortSignal.timeout(150000) });
         httpStatus = response.status; responseText = await boundedText(response.body, 4_000_000);
         // Credentials are never stored in the request, response headers, logs, or normalized record.
         responseText = responseText.split(key).join("[credential removed]");

@@ -30,10 +30,10 @@
   --destructive: #b83b40; --border: #dde3ed; --input: #d3dbe8; --ring: #5478e7;
   --chart-1: #254fd6; --chart-2: #137a69; --chart-3: #976c2b; --chart-4: #7c56b4; --chart-5: #ab4e6c;
   --radius: 0.65rem;
-  --sidebar: #ffffff; --sidebar-foreground: #56647d;
+  --sidebar: #14243f; --sidebar-foreground: #e1e8f4;
   --sidebar-primary: #254fd6; --sidebar-primary-foreground: #ffffff;
-  --sidebar-accent: #ecf1ff; --sidebar-accent-foreground: #254fd6;
-  --sidebar-border: #e2e7f0; --sidebar-ring: #5478e7;
+  --sidebar-accent: #273e60; --sidebar-accent-foreground: #ffffff;
+  --sidebar-border: #2b3c56; --sidebar-ring: #5478e7;
 }
 
 @theme inline {
@@ -88,3 +88,5 @@ button:disabled { cursor: not-allowed; }
 .research-grid { display: grid; grid-template-columns: minmax(240px, 310px) minmax(0, 1fr); }
 @media (max-width: 1050px) { .research-grid { grid-template-columns: minmax(0, 1fr); } }
 @layer base { * { border-color: var(--border); } }
+
+@media (prefers-reduced-motion: reduce) { *, *::before, *::after { scroll-behavior: auto !important; transition-duration: 0s !important; animation-duration: 0.01ms !important; animation-iteration-count: 1 !important; } }

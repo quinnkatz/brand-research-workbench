@@ -13,8 +13,11 @@ export type Normalized = {
   warnings: string[]; unparsed_top_level_events: { raw_path: string; type: string }[];
   search_observation: string; rejected_sources: null; private_ranking_reasons: null;
 };
-export type Study = { id: string; name: string; brand: string; website: string; objective: string; created_at: string };
-export type ResearchRecord = { id: string; study_id: string; kind: "fact" | "question" | "review"; payload: Json; created_at: string; updated_at: string };
+export type BrandProfile = { category: string; audience: string; positioning: string; aliases: string[]; competitors: { name: string; aliases: string[] }[]; market: string; language: string };
+export const emptyProfile = (): BrandProfile => ({ category: "", audience: "", positioning: "", aliases: [], competitors: [], market: "", language: "" });
+export type Study = { id: string; name: string; brand: string; website: string; objective: string; created_at: string; profile?: BrandProfile };
+export type ResearchRecord = { id: string; study_id: string; kind: "fact" | "question" | "review" | "source" | "action" | "analysis"; payload: Json; created_at: string; updated_at: string };
+export type CollectionJob = { id: string; study_id: string; batch_id: string; batch_name: string; provider: Provider; model: string; prompt: string; question_id: string | null; repeat_index: number; status: string; run_id: string | null; settings: Json; error: string | null; created_at: string; updated_at: string };
 export type Run = { id: string; study_id: string; provider: Surface; environment: string; model: string; prompt: string; status: string; search: string; settings: Json; normalized: Normalized | null; error: string | null; created_at: string; finished_at: string | null; evidence_hash: string | null; attachments?: Attachment[] };
 export type Attachment = { id: string; name: string; mime: string; sha256: string; created_at: string };
 export function safeUrl(value: string) { try { const u = new URL(value); return ["https:", "http:"].includes(u.protocol) ? u.href : undefined; } catch { return undefined; } }
