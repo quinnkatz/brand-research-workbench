@@ -37,8 +37,20 @@ export function failure(e: unknown) {
   if (e instanceof z.ZodError) return reply({ error: e.errors.map(x => `${x.path.join(".")}: ${x.message}`).join("; ") }, 400);
   return reply({ error: "The operation could not be completed. Your saved records are still available. Please try again." }, 500);
 }
-export async function ownStudy(id: string, uid: string) { const result = await db().prepare("SELECT * FROM studies WHERE id = ? AND owner_id = ?").bind(id, uid).first(); if (!result) throw new AppError("Study not found.", 404); return result; }
-export async function ownRun(id: string, uid: string) { const result = await db().prepare("SELECT * FROM runs WHERE id = ? AND owner_id = ?").bind(id, uid).first<Record<string, any>>(); if (!result) throw new AppError("Run not found.", 404); return result; }
+export async function ownStudy(id: string, uid: string, permission: "read" | "write" | "owner" = "read") {
+  const result = await db().prepare("SELECT s.*, CASE WHEN s.owner_id = ? THEN 'owner' ELSE m.role END AS access_role FROM studies s LEFT JOIN study_members m ON m.study_id = s.id AND m.user_id = ? WHERE s.id = ? AND (s.owner_id = ? OR m.user_id = ?)").bind(uid, uid, id, uid, uid).first<any>();
+  if (!result) throw new AppError("Study not found.", 404);
+  if (permission === "owner" && result.access_role !== "owner" || permission === "write" && result.access_role === "viewer") throw new AppError("Your role does not allow this change.", 403);
+  return result;
+}
+export async function ownRun(id: string, uid: string, permission: "read" | "write" = "read") {
+  const result = await db().prepare("SELECT * FROM runs WHERE id = ?").bind(id).first<Record<string, any>>();
+  if (!result) throw new AppError("Run not found.", 404);
+  await ownStudy(result.study_id, uid, permission); return result;
+}
+export async function audit(studyId: string, actorId: string, event: string, targetId: string | null = null, detail: unknown = {}) {
+  await db().prepare("INSERT INTO activity (id,study_id,actor_id,event,target_id,detail,created_at) VALUES (?,?,?,?,?,?,?)").bind(crypto.randomUUID(), studyId, actorId, event, targetId, JSON.stringify(detail), new Date().toISOString()).run();
+}
 export const idSchema = z.string().uuid();
 export const urlSchema = z.string().max(2000).refine(v => { try { return ["http:", "https:"].includes(new URL(v).protocol); } catch { return false; } }, "Enter an http or https URL.");
 export function publicRun(row: Record<string, any>): Run { const { owner_id, evidence_key, ...safe } = row; return { ...safe, settings: JSON.parse(row.settings), normalized: row.normalized ? JSON.parse(row.normalized) : null } as Run; }

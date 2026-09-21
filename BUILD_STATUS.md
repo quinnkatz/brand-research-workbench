@@ -1,51 +1,57 @@
-# Part A — implementation checkpoint
+# Part A — implementation and acceptance
 
-Updated 2026-09-21. This is the continuation of the original Brand Research Workbench, not a replacement project. Part B autonomous agent infrastructure and physical activations remain separate.
+Updated 2026-09-21. Continuing the original Brand Research Workbench. Part B autonomous publishing/outreach and physical activations remain separate.
 
-## Outcome of this release
+## Implemented client product
 
-A private brand research application with a connected workflow: brand setup → reusable questions → collection plan / observation → scoped brand portrait → source and passage inspection → narrative interpretation → human decisions → dated client report and questions.
+| Area | Delivered behavior |
+| --- | --- |
+| Brand setup | Guided profile, audience, positioning, aliases, competitors, market/language and editable customer questions; first-investigation checklist |
+| Products | Dated SKU, variant, retailer and offer references; fact/question links preserve product snapshots |
+| Collection | Five API adapters, provider JSON imports, nine consumer observation surfaces, downloadable local browser capture helper and screenshot evidence |
+| Planning | Saved exact prompts, models, question/context versions, repeated requests, manual execution with pause, idempotent job claiming |
+| Connections | AES-GCM encrypted credentials; private metadata; per-brand authorization and persistent request allowances |
+| Background execution | QStash EU transport, limited-scope hashed callback credentials, concurrency/rate configuration, idempotency, visible uncertain delivery, guarded replacement |
+| Monitoring | Daily/weekly UTC protocols, same-day retry deduplication, local pause, allowance exhaustion guard, evidence-linked mention/source alerts and terminal-batch reports |
+| Measurement | Name/alias presence, tracked share, matched competitor cohorts, dated trends, explicit sample denominators, human recommendation/sentiment/rank classifications |
+| Investigation | Exact passage links, citations distinguished by scope, disclosed search events, original response/native fields, hashes and screenshot attachments |
+| Sources | Categories, reverse answer links, exact URL comparisons, competitor-associated answer counts, preserved dated excerpts and source deep links |
+| Interpretation | Scoped narrative analysis with exact-quote validation; separate accepted/edited/rejected human review with evidence and history |
+| Advice | Evidence-scoped assistant and content briefs; exact reference verification, rejected invented quotes, unanswered questions, human-reviewed proposed actions |
+| Actions | Priorities, due/implementation dates, linked reviews, verification criteria and follow-up records |
+| Readiness | Same-host public HTML audit, DNS/redirect checks, robots policy, metadata/headings/text/canonical/JSON-LD evidence, crawler permissions and capture comparisons |
+| First-party signals | Mapped GA4 referral, Search Console and crawler CSV exports; preview, validation, rejected rows, originals and explicit attribution limits |
+| Collaboration | Study owner/editor/viewer roles, email-bound expiring invites, challenge/evidence threads, responses, version history and activity |
+| Delivery | Dated report snapshots, downloadable HTML, human-reviewed narrative and scoped actions, expiring/revocable links and finding-specific reader questions |
+| User experience | Five main destinations, progressive filters, saved views, private evidence pins, draft recovery/conflict handling for core review forms, exact navigation URLs, older-run pagination, accessible components and reduced-motion CSS |
 
-### Implemented
+## Verified and not yet verified
 
-- Guided brand setup with category, audience, intended positioning, aliases, competitor names, market/language brief, and editable starter questions. Templates are labelled as scenarios, not search-demand evidence.
-- Persistent collection plans spanning the three existing API adapters. Exact questions, models, repetitions, search mode and output limits are captured before execution. Atomic job claiming prevents a completed or already-started item from being billed again by repeated execution clicks. Interrupted or uncertain requests require operator attention and are not retried automatically.
-- Page-driven sequential execution with pause/resume and explicit limitations. The queue persists; the browser must remain on the collection page for further requests to start.
-- Shared evidence filters across portrait, sources, narrative, comparisons, decisions and reports. Consumer observations, API experiments and imported responses stay visibly distinct. Failed, partial and empty answers do not become brand omissions.
-- Name/alias presence, tracked share of voice, configured competitor comparisons, daily sample trends, source-domain counts and evidence health. Metrics open their underlying observations. These are sample measurements, not market-share estimates or recommendation-quality scores.
-- AI-assisted narrative analysis of selected recorded answers, with provider/model labels and preserved input, request, original response text and hash. Exact quotes and run IDs are checked; unsupported evidence references are rejected. Interpretations remain explicitly awaiting human review.
-- Source library with reverse links to observations and immutable, researcher-supplied, dated excerpt captures. A later excerpt capture is not presented as proof of what a model read.
-- Existing sentence/passage inspection, native citations, disclosed search events, full originals, screenshot attachments, review anchors and fact snapshots retained.
-- Historical versions of edited facts, questions, claim reviews and actions; stale writes are rejected by the new clients. Action lifecycle includes priorities, linked reviews, dates, verification criteria and follow-up observations.
-- Downloadable HTML client reports now include method-separated brand/competitor measurements alongside human findings, references and full answer records.
-- Immutable report-link versions with expiry, revocation and finding-specific reader questions. The link is a bearer credential within the site's access boundary. It does not change the site's audience. Reader-supplied names are explicitly unverified; no messages are sent automatically.
-- Improved navigation, editorial brand portrait, clear empty states, a labelled fictional multi-provider example, scoped URLs, responsive layouts and on-demand loading of heavier views.
+- TypeScript and production build validated.
+- Parser, claim, metrics and report tests cover immutable response handling, scope, exact quotation/anchor integrity, non-executable report rendering, provider completion states and citation roles.
+- Worker integration tests cover D1/R2 persistence, tenant/role isolation, invitation email matching and replay, grants/quotas, concurrent duplicate callbacks, retained originals, client challenges, draft conflicts, traffic validation, page extraction, rejected fabricated evidence and scheduled report creation.
+- All transport tests use synthetic provider/queue responses. They establish implementation behavior, not provider account access, actual model support, search completeness, vendor uptime or actual billing.
+- Browser checks on the managed preview exercise the rendered example, primary navigation, collection planner and exact-passage deep-link restoration. The screenshot in `docs/qa/` is explicitly fictional example data. Authenticated browser acceptance with a separate client account remains a launch check; authenticated server flows are covered by Worker tests.
+- Consumer Capture's JavaScript and import contract are checked; it has not been installed and exercised in a real signed-in consumer app in this session. It is not a store-published extension or autonomous scraping service.
 
-## What is not complete
+## Activation dependencies
 
-- No real provider credentials are connected and no paid live calls were made. Provider request orchestration is tested against a synthetic transport; account/model/search compatibility still needs real validation.
-- Broad consumer-product coverage currently means manual observations with conditions/screenshots. There is no automated ChatGPT/Claude/Google/Perplexity consumer-app capture integration.
-- No unattended scheduler, notifications, managed customer billing, pooled provider budget, subscriptions, automatic client provisioning or agency/team workspace roles. Configured recurring monitoring belongs to Part A and remains planned; do not move it to Part B.
-- Reports include human assessments and scoped measurements. AI-generated themes remain in the workspace for assessment; they are not silently promoted into reviewed client findings.
-- No automatic crawling or technical site-audit service, content publishing, external outreach, conversion attribution or controlled causal experiment engine.
-- Alias detection is deterministic text matching and can be ambiguous. The configuration and exact sample should be reviewed before interpretation.
-- State and structured exports currently load at most the latest 500 observations. The total and truncation warning are visible. Collection plans have a 100-request limit and a study has a 2,000 collection-item limit. Report snapshots include at most 100 observations and 12 MB of structured evidence; analysis is limited to 25 answers and 90,000 input characters.
-- API keys are held in tab memory only. Clients cannot simply enter a website and receive a paid automated audit without a connected provider account or a future managed service layer.
-- Hosted audience remains owner-private. External pilot access must be configured before sending the site or report links to clients.
+1. Provider credentials have not been supplied. Save a real account connection in the app and perform a deliberate small brand investigation to validate each desired adapter/model/search combination.
+2. The production vault master secret is configured. Provider and QStash secrets are not.
+3. The existing Site audience remains owner-private. Study invitations alone cannot bypass that boundary. Named pilot access or an explicitly authorized broader audience is required before outside clients can open it.
+4. Unattended callbacks cannot pass the current outer private gate. QStash scheduling is built and synthetic-transport tested, but not active. A reachable callback and real QStash EU account are required. The app stops activation if its external callback probe fails.
+5. Billing/subscriptions, email delivery, automatic Google/ChatGPT/Claude consumer-account collectors and managed service accounts are not included. They are not claimed as finished. Traffic ingestion uses file exports, not live OAuth connectors. Readiness audits deliberate pages, not an autonomous whole-site crawl.
 
-## Verification
+## Operational limits
 
-- TypeScript validation and production build.
-- 25 automated tests covering parsers, exact passage anchors, safe report rendering, metric denominators and alias boundaries, analysis evidence validation, D1/R2 persistence, immutable fact snapshots, file ownership, account isolation, cross-origin rejection, collection deduplication, redirects, malformed provider responses, historical edits, report versions, reader questions and revocation.
-- Isolated Worker integration tests use synthetic dispatcher identities and mocked provider responses. They do not add an authentication bypass to application code or send paid requests.
-- Browser inspection confirmed the empty workspace and rendered multi-provider brand portrait. The remote browser's interaction/screenshot operations repeatedly timed out; full visual and interactive browser acceptance remains to be completed. No live-provider or external-client acceptance is claimed.
-- Integration testing found and fixed a hosting-runtime incompatibility with `redirect: "error"`. Provider requests now use manual redirect handling, never forwarding credentials through a redirect.
+- Initial loading: latest 500 observations, then 200 older records per explicit page. Metrics describe loaded/filtered evidence; structured default export retains its explicit latest-500 limit. Original files are individually downloadable.
+- Manual collection plan: at most 100 requests; at most 2,000 plan items per study. Monitoring protocols: 20 questions, up to 3 repetitions, one provider each; additional providers use separate protocols.
+- Report links: at most 100 observations / 12 MB, expiring within 30 days. Monitor reports are evidence inventories until reviewed findings exist.
+- Narrative analysis: at most 25 answers / 90,000 input characters. Assistant/brief: up to 30 answers and 50 selected reference records / 120,000 input characters.
+- Public audit: exact configured HTTPS hostname, bounded response size and redirects, no JavaScript rendering. Captured crawler rules are policy, not proof of a visit.
+- Request allowances are conservative logical-call caps, not a dollar budget. Failed or uncertain requests can consume allowance. A provider request may have several billable tool calls.
+- Site/client traffic, conversions, deployment load and vendor costs have not been measured with real clients. No competitive-parity or completed-live-launch claim is made.
 
-## Next client-launch gates
+## Definition of a successful pilot
 
-1. Validate real collection and narrative analysis with one connected provider account, then the other adapters. Confirm model support, search disclosure and error/billing behavior.
-2. Run a real brand through setup, collection, exact-claim inspection, fact review, action and report delivery. Assess whether its findings change a useful brand decision.
-3. Finish browser acceptance and configure named pilot access (or explicitly authorize a broader audience). Test with a separate client account; current records remain account-isolated.
-4. Add a managed execution/budget layer, unattended schedules and automatic capture integrations in separately validated increments. Preserve method labels and original evidence throughout.
-
-Do not represent this release as competitive parity with established visibility platforms or as the completed 30-hour product. It is a substantial implementation increment with explicit launch dependencies.
+An authorized client can access their brand only, a researcher completes a real evidence-backed study, the client opens an exact claim and challenges it, the team records its response, and a dated report contains useful verified decisions. Where recurring monitoring is enabled, one real scheduled delivery and duplicate callback must be verified without duplicate provider execution. These account-dependent checks cannot be substituted with the fictional example.

@@ -1,24 +1,25 @@
 import { z } from "zod";
 import { validAnchor } from "@/lib/claims";
 import type { Run } from "@/lib/research";
-import { AppError, boundedText, bucket, db, failure, idSchema, jsonBody, ownRun, ownStudy, owner, publicRecord, publicRun, reply, saveEvidence, urlSchema } from "@/lib/server";
+import { AppError, audit, boundedText, bucket, db, failure, idSchema, jsonBody, ownRun, ownStudy, owner, publicRecord, publicRun, reply, saveEvidence, urlSchema } from "@/lib/server";
 import { endpoints, makeRequest, normalize, providerHeaders } from "@/lib/providers";
 import { publicStudy } from "@/lib/research-server";
 import type { Normalized, Provider } from "@/lib/research";
+import { connectionFor, openSecret, savedKey } from "@/lib/vault";
 export const dynamic = "force-dynamic";
-const providerSchema = z.enum(["openai", "anthropic", "gemini"]);
+const providerSchema = z.enum(["openai", "anthropic", "gemini", "perplexity_api", "xai"]);
 const text = (max = 10000) => z.string().trim().min(1).max(max);
 const exactText = (max: number) => z.string().min(1).max(max).refine(v => !!v.trim(), "Text cannot be blank.");
 const optionalText = (max = 10000) => z.string().max(max).default("");
-const factSchema = z.object({ claim: text(4000), product: optionalText(300), source: urlSchema, excerpt: text(8000), checkedAt: text(50), status: z.enum(["verified", "needs_review", "disputed"]), notes: optionalText(8000) });
-const questionSchema = z.object({ prompt: exactText(12000), intent: z.enum(["discovery", "comparison", "verification", "purchase", "support"]), notes: optionalText(4000), origin: z.enum(["customer", "researcher", "template", "ai_suggested"]).default("researcher"), tags: z.array(text(60)).max(12).default([]) });
+const factSchema = z.object({ claim: text(4000), product: optionalText(300), productId: idSchema.optional(), source: urlSchema, excerpt: text(8000), checkedAt: text(50), status: z.enum(["verified", "needs_review", "disputed"]), notes: optionalText(8000) });
+const questionSchema = z.object({ prompt: exactText(12000), intent: z.enum(["discovery", "comparison", "verification", "purchase", "support"]), notes: optionalText(4000), origin: z.enum(["customer", "researcher", "template", "ai_suggested"]).default("researcher"), tags: z.array(text(60)).max(12).default([]), audience: optionalText(300), market: optionalText(100), language: optionalText(100), productId: idSchema.optional() });
 const reviewSchema = z.object({ runId: idSchema, claim: exactText(6000), anchor: z.object({ segmentIndex: z.number().int().min(0), start: z.number().int().min(0), end: z.number().int().min(1) }).nullable().optional(), impact: optionalText(4000), recommendation: optionalText(8000), verdict: z.enum(["supported", "contradicted", "uncertain", "omitted"]), evidenceLevel: z.enum(["observed", "inferred", "experimentally_supported", "unknown"]), materiality: z.enum(["low", "medium", "high"]), factIds: z.array(idSchema).max(50), explanation: text(10000), hypothesis: optionalText(8000), nextTest: optionalText(8000) });
 
 async function studyData(studyId: string, uid: string) {
-  await ownStudy(studyId, uid);
+  const access = await ownStudy(studyId, uid); uid = access.owner_id;
   const [records, runs, count] = await Promise.all([
     db().prepare("SELECT * FROM records WHERE study_id = ? AND owner_id = ? ORDER BY created_at DESC").bind(studyId, uid).all(),
-    db().prepare("SELECT * FROM runs WHERE study_id = ? AND owner_id = ? ORDER BY created_at DESC LIMIT 500").bind(studyId, uid).all(),
+    db().prepare("SELECT * FROM runs WHERE study_id = ? AND owner_id = ? ORDER BY created_at DESC, id DESC LIMIT 500").bind(studyId, uid).all(),
     db().prepare("SELECT count(*) AS n FROM runs WHERE study_id = ? AND owner_id = ?").bind(studyId, uid).first<any>(),
   ]);
   return { records: records.results.map(publicRecord), runs: runs.results.map(publicRun), totalRuns: Number(count?.n || 0) };
@@ -27,13 +28,19 @@ export async function GET(req: Request) {
   try {
     const uid = await owner(req); const params = new URL(req.url).searchParams; const action = params.get("action") || "state";
     if (action === "state") {
-      const studies = await db().prepare("SELECT id, name, brand, website, objective, profile, created_at FROM studies WHERE owner_id = ? ORDER BY created_at DESC").bind(uid).all();
+      const studies = await db().prepare("SELECT s.*, CASE WHEN s.owner_id = ? THEN 'owner' ELSE m.role END AS access_role FROM studies s LEFT JOIN study_members m ON m.study_id = s.id AND m.user_id = ? WHERE s.owner_id = ? OR m.user_id = ? ORDER BY s.created_at DESC").bind(uid, uid, uid, uid).all();
       const id = params.get("studyId") || (studies.results[0]?.id as string | undefined);
       return reply({ studies: studies.results.map(publicStudy), studyId: id || null, ...(id ? await studyData(idSchema.parse(id), uid) : { records: [], runs: [] }) });
     }
+    if (action === "runs_page") {
+      const studyId=idSchema.parse(params.get("studyId")),study=await ownStudy(studyId,uid),cursor=idSchema.parse(params.get("before"));
+      const last=await ownRun(cursor,uid);if(last.study_id!==studyId)throw new AppError("The cursor belongs to another study.");
+      const rows=await db().prepare("SELECT * FROM runs WHERE study_id=? AND owner_id=? AND (created_at < ? OR (created_at=? AND id<?)) ORDER BY created_at DESC,id DESC LIMIT 200").bind(studyId,study.owner_id,last.created_at,last.created_at,cursor).all();
+      return reply({runs:rows.results.map(publicRun)});
+    }
     if (action === "run") {
       const row = await ownRun(idSchema.parse(params.get("id")), uid);
-      const files = await db().prepare("SELECT id, name, mime, sha256, created_at FROM attachments WHERE run_id = ? AND owner_id = ? ORDER BY created_at").bind(row.id, uid).all();
+      const files = await db().prepare("SELECT id, name, mime, sha256, created_at FROM attachments WHERE run_id = ? AND owner_id = ? ORDER BY created_at").bind(row.id, row.owner_id).all();
       return reply({ run: { ...publicRun(row), attachments: files.results } });
     }
     if (action === "evidence") {
@@ -56,11 +63,11 @@ export async function GET(req: Request) {
 
 export async function POST(req: Request) {
   try {
-    const uid = await owner(req, true); const body = await jsonBody(req); const now = new Date().toISOString();
+    const actor = await owner(req, true); let uid = actor; const body = await jsonBody(req); const now = new Date().toISOString();
     if (body.action === "study") {
       const v = z.object({ id: idSchema.optional(), name: text(120), brand: text(120), website: z.union([urlSchema, z.literal("")]).default(""), objective: optionalText(4000) }).parse(body);
       if (v.id) {
-        await ownStudy(v.id, uid);
+        uid = (await ownStudy(v.id, actor, "write")).owner_id;
         await db().prepare("UPDATE studies SET name = ?, brand = ?, website = ?, objective = ? WHERE id = ? AND owner_id = ?").bind(v.name, v.brand, v.website, v.objective, v.id, uid).run();
         return reply({ id: v.id });
       }
@@ -70,8 +77,9 @@ export async function POST(req: Request) {
     }
     if (body.action === "record") {
       const { studyId, kind, id } = z.object({ studyId: idSchema, kind: z.enum(["fact", "question", "review"]), id: idSchema.optional() }).parse(body);
-      await ownStudy(studyId, uid);
+      uid = (await ownStudy(studyId, actor, "write")).owner_id;
       const payload = kind === "fact" ? factSchema.parse(body.payload) : kind === "question" ? questionSchema.parse(body.payload) : reviewSchema.parse(body.payload);
+      if((payload as any).productId){const product=await db().prepare("SELECT * FROM records WHERE id=? AND study_id=? AND owner_id=? AND kind='product'").bind((payload as any).productId,studyId,uid).first();if(!product)throw new AppError("Choose a product in this brand workspace.");Object.assign(payload,{productSnapshot:publicRecord(product)});}
       if (kind === "review") {
         const review = reviewSchema.parse(payload); const run = await ownRun(review.runId, uid);
         if (run.study_id !== studyId) throw new AppError("The run belongs to a different study.");
@@ -93,15 +101,19 @@ export async function POST(req: Request) {
           db().prepare("UPDATE records SET payload = ?, updated_at = ? WHERE id = ? AND owner_id = ? AND updated_at = ?").bind(JSON.stringify(payload), now, id, uid, old.updated_at),
         ]);
         if (result[1].meta.changes !== 1) throw new AppError("This record changed in another session. Refresh before saving.", 409);
+        await audit(studyId,actor,`${kind}_updated`,id,{});
         return reply({ id });
       }
       const newId = crypto.randomUUID();
       await db().prepare("INSERT INTO records (id, owner_id, study_id, kind, payload, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)").bind(newId, uid, studyId, kind, JSON.stringify(payload), now, now).run();
+      await audit(studyId,actor,`${kind}_created`,newId,{});
       return reply({ id: newId }, 201);
     }
     if (body.action === "models") {
-      const { provider, key } = z.object({ provider: providerSchema, key: z.string().trim().min(10).max(512) }).parse(body);
-      const url = provider === "openai" ? "https://api.openai.com/v1/models" : provider === "anthropic" ? "https://api.anthropic.com/v1/models?limit=1000" : "https://generativelanguage.googleapis.com/v1beta/models?pageSize=1000";
+      const { provider, connectionId, key: enteredKey } = z.object({ provider: providerSchema, connectionId:idSchema.optional(), key: z.string().trim().min(10).max(512).optional() }).parse(body);
+      const key = connectionId ? await openSecret(await connectionFor(actor,connectionId,provider)) : z.string().min(10).max(512).parse(enteredKey);
+      if(provider==="perplexity_api")throw new AppError("Sonar model IDs are entered directly. Use a Sonar model such as sonar or sonar-pro; verify account access with a deliberate collection request.");
+      const url = provider === "xai" ? "https://api.x.ai/v1/models" : provider === "openai" ? "https://api.openai.com/v1/models" : provider === "anthropic" ? "https://api.anthropic.com/v1/models?limit=1000" : "https://generativelanguage.googleapis.com/v1beta/models?pageSize=1000";
       const res = await fetch(url, { headers: providerHeaders(provider, key), redirect: "manual", signal: AbortSignal.timeout(20000) });
       if (!res.ok) { await res.body?.cancel(); throw new AppError(`The provider returned HTTP ${res.status}. Check the API key, account access, and billing settings.`, 400); }
       const raw = JSON.parse(await boundedText(res.body));
@@ -110,7 +122,7 @@ export async function POST(req: Request) {
     }
     if (["collect", "import", "observe"].includes(body.action)) {
       const base = z.object({ studyId: idSchema, prompt: exactText(12000), model: text(200), notes: optionalText(8000) }).parse(body);
-      await ownStudy(base.studyId, uid); bucket();
+      uid = (await ownStudy(base.studyId, actor, "write")).owner_id; bucket();
       const id = crypto.randomUUID();
       if (body.action === "observe") {
         const v = z.object({ surface: z.enum(["chatgpt", "claude", "google_ai_mode", "google_ai_overview", "gemini", "perplexity", "copilot", "grok", "other"]), answer: exactText(100000), observedAt: z.string().datetime(), location: text(300), locale: text(100), memory: text(300), conversation: text(2000), mode: text(300), searchObservation: z.enum(["search_ui_visible", "no_search_ui_visible", "unknown"]), sources: z.array(z.object({ url: urlSchema, title: optionalText(500) })).max(150) }).parse(body);
@@ -131,7 +143,7 @@ export async function POST(req: Request) {
         await insertRun({ id, uid, base, provider: v.provider, environment: "imported", search: v.search, settings: { notes: base.notes, declaredSettingsUnverified: true }, normalized, evidence, now });
         return reply({ id }, 201);
       }
-      const key = z.string().trim().min(10).max(512).parse(body.key); const request = makeRequest(v.provider, base.model, base.prompt, v.search, v.maxTokens);
+      const key = body.connectionId ? await savedKey(uid,base.studyId,v.provider,idSchema.parse(body.connectionId),id) : z.string().trim().min(10).max(512).parse(body.key); const request = makeRequest(v.provider, base.model, base.prompt, v.search, v.maxTokens);
       const settings = { maxOutputTokens: v.maxTokens, searchMode: v.search, notes: base.notes, systemPrompt: null, userLocation: null, domainFilters: null, ...(v.provider === "anthropic" && v.search === "auto" ? { maxSearches: 3, toolVersion: "web_search_20260318" } : {}) };
       await db().prepare("INSERT INTO runs (id, owner_id, study_id, provider, environment, model, prompt, status, search, settings, created_at) VALUES (?, ?, ?, ?, 'api', ?, ?, 'running', ?, ?, ?)").bind(id, uid, base.studyId, v.provider, base.model, base.prompt, v.search, JSON.stringify(settings), now).run();
       let responseText: string | null = null; let httpStatus: number | null = null;

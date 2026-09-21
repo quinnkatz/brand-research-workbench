@@ -1,4 +1,4 @@
-import { sqliteTable, text, index } from "drizzle-orm/sqlite-core";
+import { sqliteTable, text, index, integer, uniqueIndex } from "drizzle-orm/sqlite-core";
 export const studies = sqliteTable("studies", {
   id: text("id").primaryKey(), ownerId: text("owner_id").notNull(),
   name: text("name").notNull(), brand: text("brand").notNull(),
@@ -48,3 +48,53 @@ export const reportComments = sqliteTable("report_comments", {
   id: text("id").primaryKey(), reportId: text("report_id").notNull().references(() => reportSnapshots.id),
   author: text("author").notNull(), reviewId: text("review_id"), message: text("message").notNull(), createdAt: text("created_at").notNull(),
 }, t => [index("comments_report").on(t.reportId, t.createdAt)]);
+
+// A study is the tenant boundary. Evidence continues to belong to its original owner.
+export const studyMembers = sqliteTable("study_members", {
+  id: text("id").primaryKey(), studyId: text("study_id").notNull().references(() => studies.id),
+  userId: text("user_id").notNull(), email: text("email").notNull(), role: text("role").notNull(),
+  createdAt: text("created_at").notNull(),
+}, t => [uniqueIndex("members_study_user").on(t.studyId, t.userId), index("members_user").on(t.userId)]);
+export const studyInvites = sqliteTable("study_invites", {
+  id: text("id").primaryKey(), studyId: text("study_id").notNull().references(() => studies.id),
+  email: text("email").notNull(), role: text("role").notNull(), tokenHash: text("token_hash").notNull().unique(),
+  createdAt: text("created_at").notNull(), expiresAt: text("expires_at").notNull(), acceptedAt: text("accepted_at"), revokedAt: text("revoked_at"),
+}, t => [index("invites_study").on(t.studyId)]);
+export const connections = sqliteTable("connections", {
+  id: text("id").primaryKey(), ownerId: text("owner_id").notNull(), provider: text("provider").notNull(),
+  label: text("label").notNull(), model: text("model").notNull(), ciphertext: text("ciphertext").notNull(), iv: text("iv").notNull(),
+  metadata: text("metadata").notNull().default("{}"), createdAt: text("created_at").notNull(), updatedAt: text("updated_at").notNull(),
+}, t => [index("connections_owner").on(t.ownerId)]);
+export const studyConnections = sqliteTable("study_connections", {
+  id: text("id").primaryKey(), studyId: text("study_id").notNull().references(() => studies.id),
+  connectionId: text("connection_id").notNull().references(() => connections.id),
+  requestLimit: integer("request_limit").notNull().default(100), usedRequests: integer("used_requests").notNull().default(0),
+  createdAt: text("created_at").notNull(),
+}, t => [uniqueIndex("study_connection_grant").on(t.studyId, t.connectionId)]);
+export const executionTickets = sqliteTable("execution_tickets", {
+  id: text("id").primaryKey(), jobId: text("job_id").notNull(), ownerId: text("owner_id").notNull(),
+  connectionId: text("connection_id").notNull(), tokenHash: text("token_hash").notNull(), messageId: text("message_id"),
+  status: text("status").notNull(), error: text("error"), createdAt: text("created_at").notNull(), expiresAt: text("expires_at").notNull(),
+}, t => [uniqueIndex("tickets_job").on(t.jobId), index("tickets_owner").on(t.ownerId)]);
+export const monitors = sqliteTable("monitors", {
+  id: text("id").primaryKey(), ownerId: text("owner_id").notNull(), studyId: text("study_id").notNull().references(() => studies.id),
+  name: text("name").notNull(), config: text("config").notNull(), status: text("status").notNull(),
+  tokenHash: text("token_hash").notNull(), scheduleId: text("schedule_id"), lastTick: text("last_tick"),
+  createdAt: text("created_at").notNull(), updatedAt: text("updated_at").notNull(),
+}, t => [index("monitors_study").on(t.ownerId, t.studyId)]);
+export const monitorTicks = sqliteTable("monitor_ticks", {
+  id: text("id").primaryKey(), monitorId: text("monitor_id").notNull().references(() => monitors.id),
+  batchId: text("batch_id").notNull(), createdAt: text("created_at").notNull(),
+});
+export const activity = sqliteTable("activity", {
+  id: text("id").primaryKey(), studyId: text("study_id").notNull().references(() => studies.id),
+  actorId: text("actor_id").notNull(), event: text("event").notNull(), targetId: text("target_id"),
+  detail: text("detail").notNull().default("{}"), createdAt: text("created_at").notNull(),
+}, t => [index("activity_study").on(t.studyId, t.createdAt)]);
+export const drafts = sqliteTable("drafts", {
+  id: text("id").primaryKey(), studyId: text("study_id").notNull().references(() => studies.id), userId: text("user_id").notNull(),
+  name: text("name").notNull(), payload: text("payload").notNull(), version: integer("version").notNull().default(1), updatedAt: text("updated_at").notNull(),
+}, t => [uniqueIndex("draft_scope").on(t.studyId, t.userId, t.name)]);
+export const requestReservations = sqliteTable("request_reservations", {
+  id: text("id").primaryKey(), grantId: text("grant_id").notNull(), createdAt: text("created_at").notNull(),
+}, t => [index("reservations_grant").on(t.grantId)]);

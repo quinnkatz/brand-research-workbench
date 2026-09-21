@@ -1,12 +1,14 @@
 import type { Json, Normalized, Provider } from "./research";
 export const endpoints: Record<Provider, string> = {
   openai: "https://api.openai.com/v1/responses",
+  xai: "https://api.x.ai/v1/responses",
+  perplexity_api:"https://api.perplexity.ai/v1/sonar",
   anthropic: "https://api.anthropic.com/v1/messages",
   gemini: "https://generativelanguage.googleapis.com/v1beta/interactions",
 };
 export function providerHeaders(provider: Provider, key: string) {
   const headers: Record<string, string> = { "Content-Type": "application/json" };
-  if (provider === "openai") headers.Authorization = `Bearer ${key}`;
+  if (["openai","xai","perplexity_api"].includes(provider)) headers.Authorization = `Bearer ${key}`;
   if (provider === "anthropic") { headers["x-api-key"] = key; headers["anthropic-version"] = "2023-06-01"; }
   if (provider === "gemini") headers["x-goog-api-key"] = key;
   return headers;
@@ -15,6 +17,8 @@ export function makeRequest(provider: Provider, model: string, prompt: string, s
   const active = search === "auto";
   if (provider === "openai") return { model, input: prompt, store: false, max_output_tokens: maxTokens,
     ...(active ? { tools: [{ type: "web_search" }], tool_choice: "auto", include: ["web_search_call.action.sources"] } : {}) };
+  if (provider === "xai") return {model,input:[{role:"user",content:prompt}],store:false,max_output_tokens:maxTokens,...(active?{tools:[{type:"web_search"}]}:{})};
+  if (provider === "perplexity_api") return {model,messages:[{role:"user",content:prompt}],max_tokens:maxTokens,stream:false,disable_search:!active,...(active?{enable_search_classifier:true}:{})};
   if (provider === "anthropic") return { model, max_tokens: maxTokens, messages: [{ role: "user", content: prompt }],
     ...(active ? { tools: [{ type: "web_search_20260318", name: "web_search", max_uses: 3, response_inclusion: "full" }] } : {}) };
   return { model, input: prompt, store: false, generation_config: { max_output_tokens: maxTokens },
@@ -24,10 +28,10 @@ const array = (x: Json): Json[] => Array.isArray(x) ? x : [];
 const object = (x: Json) => x !== null && typeof x === "object" && !Array.isArray(x);
 export function normalize(provider: Provider, raw: Json): Normalized {
   if (!object(raw)) throw new Error("Expected a provider JSON object.");
-  const native = provider === "anthropic" ? raw.stop_reason : raw.status;
-  let completion = ["completed", "end_turn", "stop_sequence"].includes(native) ? "complete" : ["incomplete", "max_tokens", "pause_turn", "tool_use", "requires_action", "in_progress", "queued", "budget_exceeded"].includes(native) ? "partial" : ["failed", "cancelled", "refusal"].includes(native) ? "failed_or_refused" : "unknown";
+  const native = provider === "anthropic" ? raw.stop_reason : provider === "perplexity_api" ? raw.choices?.[0]?.finish_reason : raw.status;
+  let completion = ["completed", "end_turn", "stop_sequence", "stop"].includes(native) ? "complete" : ["length", "incomplete", "max_tokens", "pause_turn", "tool_use", "requires_action", "in_progress", "queued", "budget_exceeded"].includes(native) ? "partial" : ["failed", "cancelled", "refusal"].includes(native) ? "failed_or_refused" : "unknown";
   if (raw.error) completion = "failed";
-  const out: Normalized = { parser_version: "1.0.0", provider, completion, native_status: native || null,
+  const out: Normalized = { parser_version: "1.1.0", provider, completion, native_status: native || null,
     model_reported: raw.model || null, provider_response_id: raw.id || null, usage: raw.usage || null,
     segments: [], tool_events: [], sources: [], citations: [], warnings: [], unparsed_top_level_events: [],
     search_observation: "not_disclosed", rejected_sources: null, private_ranking_reasons: null };
@@ -45,7 +49,7 @@ export function normalize(provider: Provider, raw: Json): Normalized {
       source(citation, "cited", location);
     });
   };
-  if (provider === "openai") {
+  if (provider === "openai" || provider === "xai") {
     if (!Array.isArray(raw.output)) out.warnings.push("Expected output array missing. Inspect the original response.");
     array(raw.output).forEach((item, i) => {
       if (!object(item)) return;
@@ -62,6 +66,14 @@ export function normalize(provider: Provider, raw: Json): Normalized {
         if (["failed", "incomplete"].includes(item.status)) out.warnings.push(`Search tool status ${item.status} at ${path}`);
       } else if (item.type !== "reasoning") out.unparsed_top_level_events.push({ raw_path: path, type: String(item.type) });
     });
+  } else if (provider === "perplexity_api") {
+    const choice=raw.choices?.[0];
+    if(typeof choice?.message?.content==="string")segment({text:choice.message.content},"$.choices[0].message.content");
+    array(raw.citations).forEach((url,i)=>{if(typeof url!=="string")return;source({url},"cited",`$.citations[${i}]`);if(out.segments.length)out.citations.push({segment_index:0,raw_path:`$.citations[${i}]`,native:{url,type:"numbered_citation",citation_number:i+1,scope:"answer_block"}});});
+    array(raw.search_results).forEach((s,i)=>source(s,"provider_disclosed_search_result",`$.search_results[${i}]`));
+    if(array(raw.search_results).length){out.tool_events.push({raw_path:"$.search_results",native:{type:"disclosed_search_results",results:raw.search_results}});out.search_observation="search_results_disclosed";}
+    if(raw.usage?.num_search_queries)out.tool_events.push({raw_path:"$.usage",native:{type:"search_usage",num_search_queries:raw.usage.num_search_queries}});
+    out.warnings.push("Numbered citations are retained at answer-block scope. Their placement and support for individual claims require inspection.");
   } else if (provider === "anthropic") {
     if (!Array.isArray(raw.content)) out.warnings.push("Expected content array missing. Inspect the original response.");
     array(raw.content).forEach((block, i) => {

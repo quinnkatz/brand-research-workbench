@@ -1,33 +1,44 @@
 # Brand Research Workbench
 
-A private product for investigating how AI describes a brand and delivering traceable client findings. See [BUILD_STATUS.md](BUILD_STATUS.md) for verified scope, unfinished capabilities and launch gates.
+A client research application for investigating how AI describes brands. It combines repeatable collection, inspectable original evidence, brand and competitor measurement, reviewed interpretation, and client delivery.
 
-## Workflow
+## Client journey
 
-1. Set up a brand, audience, positioning and competitors; review the suggested customer questions.
-2. Add dated reference facts. Brand preferences are not automatically facts.
-3. Create a repeatable collection plan across connected provider accounts, import original provider JSON, or manually record an actual consumer-app observation with its conditions and screenshots.
-4. Review the scoped brand portrait. Click measurements to inspect their exact answer set.
-5. Open a passage to inspect citation locations, disclosed searches, native fields and preserved originals. Capture source excerpts and distinguish capture date from the model's observation date.
-6. Analyze selected answers for themes and tentative findings. The analysis validates exact quotations, while interpretations remain subject to human assessment.
-7. Review claims against fact snapshots, record business significance and create actions with verification criteria.
-8. Compare answers and prepare a method-separated client report. Download it or create an expiring, revocable report link for an authorized site visitor. Reader questions can refer to individual findings.
+1. Set up a brand, audience, market, language, positioning and competitors. Review the starter questions; they are scenarios, not search-demand estimates.
+2. Add dated facts and product/SKU/offer identities. Facts and questions can preserve a particular product version.
+3. Save encrypted provider connections and authorize a request allowance per brand. Plan exact questions across providers and repetitions, import original responses, or capture what an actual consumer app displayed.
+4. Inspect presence, tracked share, source exposure and reviewed recommendation/sentiment labels. Open the underlying answer set, save filters, and load older observations.
+5. Click an answer passage to see its native citations, disclosed search events, supporting reference snapshots and assessments. Copy its exact link or pin it for later.
+6. Review narrative findings, ask an assistant about selected evidence, and draft content briefs. Unsupported exact quotations are rejected; interpretations and proposed actions require human review.
+7. Agree on actions with criteria and follow-up evidence. Inspect public website readiness and import first-party traffic, Search Console and crawler exports.
+8. Create a dated report with reviewed findings, interpretations, actions and source records. Invite editors/viewers, receive client challenges, and preserve the response and edit history.
+9. Configure daily or weekly UTC monitoring through a saved QStash EU connection. Reports and source/mention change alerts appear in the app. No emails, public posts or external outreach are sent.
 
-## Coverage
+## Collection coverage
 
-Direct adapters: OpenAI Responses, Anthropic Messages, Google Gemini Interactions. Live accounts and compatible models are required; these have not yet been validated against real credentials in this project.
+- API adapters: OpenAI Responses, Anthropic Messages, Gemini Interactions, Perplexity Sonar, xAI Responses. Exact model IDs and account compatibility must be checked with real credentials.
+- Consumer observations: ChatGPT, Claude, Gemini, Google AI Mode, AI Overviews, Perplexity, Copilot, Grok and other. The locally installed [Consumer Capture helper](capture-extension/README.md) preserves selected visible text/links; screenshots can be attached in the app. This is deliberate human collection, not autonomous consumer-app querying.
+- Methods are never silently merged. Consumer observations and API experiments remain distinct cohorts. Hidden ranking, complete rejected-source sets, private reasoning and true source influence cannot be reconstructed from ordinary responses.
 
-Manual consumer observations: ChatGPT, Claude, Google AI Mode, Google AI Overviews, Gemini, Perplexity, Microsoft Copilot, Grok and another named product. This is not automatic consumer-app capture. API experiments are not represented as consumer-app results.
+## Access, secrets and execution
 
-Keys remain in tab memory and are not persisted. No paid provider requests start without an explicit operator action. Planned collections require the collection page to remain open; the queue and progress survive interruption but there is no unattended scheduler yet.
+The hosted site currently has an owner-private outer gate. App-level identity comes only from trusted Sites SIWC headers. Each study has its own owner/editor/viewer permissions; email-bound invitations grant access to that study, not to the site's outer gate. An editor may use a connection authorized by the owner but cannot retrieve its secret.
 
-## Evidence model
+Saved credentials use AES-GCM with a secret `VAULT_MASTER_KEY` and owner/connection/provider-bound authenticated data. The production master key is configured separately from source. Keys can also remain in tab memory. No provider credentials are sent to the delivery queue.
 
-D1 stores studies, runs, research records, record history, durable collection items, report metadata and reader questions. R2 retains originals, attachments and report snapshots. Account ownership is checked on private operations. Shared reports require an unexpired bearer token and the surrounding site's access policy.
+Request reservations are persistent and atomic. Provider execution is atomically claimed; replayed callbacks or repeated clicks do not repeat started work. Caps count logical requests conservatively, not dollars. Uncertain delivery is visible and can be replaced after review only while the provider request has never started. Interrupted provider requests are not retried automatically.
 
-Citations show attribution, not proof of factual support or causal influence. The app cannot expose hidden chain of thought, source-selection rankings or a complete rejected-source set. Passage segmentation is a navigation aid, not a claim of atomic semantic segmentation. Ambiguous citation positions remain at block scope with original native metadata available.
+Unattended operation uses QStash's EU API, not an open browser or `waitUntil`. Activation checks whether the callback is externally reachable. The current owner-private gate blocks external callback delivery, so schedules remain inactive until access is configured. The app does not forward an authentication bypass. Activation requires a provider account, request allowance, queue account and reachable callback.
 
-Presence uses explicit names/aliases and excludes failed, partial or empty answers. Tracked share uses only configured brands. The selected sample is not all consumer traffic. Fact review snapshots, historical edits and report versions preserve earlier context.
+D1 stores studies, observations, jobs, roles, invitations, quotas, encrypted connections, schedules, drafts, histories, alerts and report metadata. R2 retains original responses, attachments, audit pages, import files, model-assistant originals and immutable report snapshots. There is no payment/subscription system or autonomous publishing.
+
+## Evidence and measurement
+
+Citation means attribution, not factual support or causal influence. Ambiguous citation coordinates remain at block scope. Presence is deterministic name/alias matching in completed non-empty answers; tracked share only concerns configured brands. Recommendation, sentiment and explicit ranks have exact evidence and human criteria. None of these samples represent all customers automatically.
+
+A later source capture does not authenticate the page version used by a provider. Public website audits respect captured robots rules, permit only the configured public HTTPS hostname, validate DNS and redirects, and do not execute JavaScript. JSON-LD checks validate JSON syntax, not rich-result eligibility. Traffic imports preserve dates, mappings and rejected rows without automatically combining overlapping exports or claiming conversion attribution.
+
+See [BUILD_STATUS.md](BUILD_STATUS.md) for verification, limits and activation requirements.
 
 ## Validation
 
@@ -35,9 +46,9 @@ After the configured Sites production build:
 
 ```sh
 node node_modules/typescript/bin/tsc --noEmit
-node --experimental-strip-types --test tests/providers.test.mjs tests/claims.test.mjs tests/analytics.test.mjs tests/workflow.test.mjs tests/research-workflow.test.mjs
+node --experimental-strip-types --test tests/providers.test.mjs tests/claims.test.mjs tests/analytics.test.mjs tests/workflow.test.mjs tests/research-workflow.test.mjs tests/platform-workflow.test.mjs
 ```
 
-Tests use isolated ephemeral D1/R2 storage, synthetic dispatcher identities and a mocked provider transport. No authentication bypass is added to the app, and tests make no paid requests.
+Tests run with isolated D1/R2 databases, synthetic dispatcher identities and mocked provider/queue transports. No authentication bypass is installed and no paid requests are made.
 
-Provider contracts: [OpenAI web search](https://developers.openai.com/api/docs/guides/tools-web-search), [Anthropic web search](https://platform.claude.com/docs/en/agents-and-tools/tool-use/web-search-tool), [Gemini Interactions](https://ai.google.dev/gemini-api/docs/interactions-overview).
+Provider contracts: [OpenAI](https://developers.openai.com/api/docs/guides/tools-web-search), [Anthropic](https://platform.claude.com/docs/en/agents-and-tools/tool-use/web-search-tool), [Gemini](https://ai.google.dev/gemini-api/docs/interactions-overview), [Perplexity](https://docs.perplexity.ai/api-reference/sonar-post), [xAI](https://docs.x.ai/developers/tools/web-search), [QStash](https://upstash.com/docs/qstash/api-reference/messages/publish-a-message).
