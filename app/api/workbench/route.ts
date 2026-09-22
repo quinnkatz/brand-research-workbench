@@ -125,7 +125,12 @@ export async function POST(req: Request) {
       if(provider==="perplexity_api")throw new AppError("Sonar model IDs are entered directly. Use a Sonar model such as sonar or sonar-pro; verify account access with a deliberate collection request.");
       const url = provider === "xai" ? "https://api.x.ai/v1/models" : provider === "openai" ? "https://api.openai.com/v1/models" : provider === "anthropic" ? "https://api.anthropic.com/v1/models?limit=1000" : "https://generativelanguage.googleapis.com/v1beta/models?pageSize=1000";
       const res = await fetch(url, { headers: providerHeaders(provider, key), redirect: "manual", signal: AbortSignal.timeout(20000) });
-      if (!res.ok) { await res.body?.cancel(); throw new AppError(`The provider returned HTTP ${res.status}. Check the API key, account access, and billing settings.`, 400); }
+      if (!res.ok) {
+        // Surface the provider's own reason; it names the actual problem (key, billing, parameters).
+        const detail = (await boundedText(res.body, 20000)).split(key).join("[credential removed]");
+        let reason = ""; try { const body = JSON.parse(detail); reason = String(body?.error?.message || body?.error?.type || body?.message || ""); } catch { reason = detail.slice(0, 300); }
+        throw new AppError(`The provider returned HTTP ${res.status}. Check the API key, account access, and billing settings.${reason ? ` Provider said: ${reason.slice(0, 300)}` : ""}`, 400);
+      }
       const raw = JSON.parse(await boundedText(res.body));
       const models = (provider === "gemini" ? raw.models || [] : raw.data || []).map((m: any) => ({ id: String(m.id || m.name || "").replace(/^models\//, ""), name: String(m.display_name || m.displayName || m.id || m.name || "") })).filter((m: any) => m.id).sort((a: any, b: any) => a.id.localeCompare(b.id));
       return reply({ models, note: "Account model list. Listing a model does not guarantee it supports this app's search tool." });
