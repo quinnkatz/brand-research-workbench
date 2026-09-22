@@ -1,8 +1,8 @@
 {
   "workerName": "brand-research-workbench",
   "d1DatabaseName": "brand-research-workbench-db",
-  "d1DatabaseId": "",
+  "d1DatabaseId": "d16691e1-2eff-4a88-bc8c-527b63682375",
   "r2BucketName": "brand-research-workbench-evidence",
-  "accessTeamDomain": "",
-  "accessAud": ""
+  "accessTeamDomain": "katgeo.cloudflareaccess.com",
+  "accessAud": "575871eb05999fd1d89ced806b0d38d8cea5907a18dd8665d91f5b351bc9ec04"
 }
