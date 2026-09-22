@@ -1,3 +1,5 @@
+import { curateRecords } from "@/lib/curation";
+import { coverageData } from "@/lib/investigation-server";
 import { z } from "zod";
 import { AppError, bucket, db, failure, hash, idSchema, jsonBody, ownStudy, owner, publicRecord, publicRun, reply, urlSchema } from "@/lib/server";
 import { appendRecord, executeJob, profileSchema, providerCall, publicJob, publicStudy } from "@/lib/research-server";
@@ -183,6 +185,23 @@ export async function POST(req: Request) {
       } catch (e) { payload.error = (e as Error).message; }
       await db().prepare("INSERT INTO records (id, owner_id, study_id, kind, payload, created_at, updated_at) VALUES (?, ?, ?, 'analysis', ?, ?, ?)").bind(id, uid, studyId, JSON.stringify(payload), now, now).run();
       return reply({ id, status: payload.status }, 201);
+    }
+    if(body.action==="curated_preview"||body.action==="curated_snapshot"){
+      const v=z.object({title:str(200),summary:optional(8000),reviewIds:z.array(idSchema).min(1).max(100),actionIds:z.array(idSchema).max(100),expiresInDays:z.number().int().min(1).max(30).default(14),fingerprint:z.string().optional()}).parse(body);
+      if(new Set(v.reviewIds).size!==v.reviewIds.length||new Set(v.actionIds).size!==v.actionIds.length)throw new AppError("Each finding and action may appear only once.");
+      const all=await recordsFor(uid,studyId);let selected;try{selected=curateRecords(all,v);}catch(e){throw new AppError((e as Error).message);}
+      if(selected.runIds.length>100)throw new AppError("Limit each report to 100 supporting observations.");
+      const runs=await selectedRuns(uid,studyId,selected.runIds),records=selected.records,board=await coverageData(uid,studyId,all);
+      const coverage=board.cells.reduce((n,c)=>({expected:n.expected+c.expected,complete:n.complete+c.counts.complete,missing:n.missing+c.counts.missing,queued:n.queued+c.counts.queued,running:n.running+c.counts.running,partial:n.partial+c.counts.partial,failed:n.failed+c.counts.failed,targets:n.targets+1}),{expected:0,complete:0,missing:0,queued:0,running:0,partial:0,failed:0,targets:0});
+      const selection={summary:v.summary,reviewIds:v.reviewIds,actionIds:v.actionIds,coverage};
+      const fingerprint=await hash(JSON.stringify({title:v.title,selection,runs,records,study}));
+      if(JSON.stringify({runs,records,selection}).length>12_000_000)throw new AppError("Select fewer findings. This report exceeds the 12 MB evidence limit.");
+      const html=buildClientReport({...study,name:v.title},runs,records,false,now,selection);
+      if(body.action==="curated_preview")return reply({html,fingerprint,observations:runs.length,findings:records.filter(r=>r.kind==="review").length,actions:v.actionIds.length,coverage});
+      if(v.fingerprint!==fingerprint)throw new AppError("The selected evidence or study coverage changed. Preview the updated report before publishing.",409);
+      const id=crypto.randomUUID(),token=crypto.randomUUID().replaceAll("-","")+crypto.randomUUID().replaceAll("-",""),expiresAt=new Date(Date.now()+v.expiresInDays*86400000).toISOString(),objectKey=`${uid}/reports/${id}.json`;
+      await bucket().put(objectKey,JSON.stringify({title:v.title,study,runs,records,selection,createdAt:now,html}),{httpMetadata:{contentType:"application/json"}});
+      await db().prepare("INSERT INTO report_snapshots(id,owner_id,study_id,title,token_hash,object_key,created_at,expires_at) VALUES(?,?,?,?,?,?,?,?)").bind(id,uid,studyId,v.title,await hash(token),objectKey,now,expiresAt).run();return reply({id,path:`/r/${token}`,expiresAt},201);
     }
     if (body.action === "snapshot") {
       const v = z.object({ title: str(200), runIds: z.array(idSchema).min(1).max(100), expiresInDays: z.number().int().min(1).max(30) }).parse(body);

@@ -8,10 +8,10 @@ A client research application for investigating how AI describes brands. It comb
 2. Add dated facts and product/SKU/offer identities. Facts and questions can preserve a particular product version.
 3. Save encrypted provider connections and authorize a request allowance per brand. Plan exact questions across providers and repetitions, import original responses, or capture what an actual consumer app displayed.
 4. Inspect presence, tracked share, source exposure and reviewed recommendation/sentiment labels. Open each contributing answer, save filters, and search the complete study. Server-side portrait metrics include older observations. Matched-period comparisons separate changed protocols.
-5. Click an answer passage to see its native citations, disclosed search events, supporting reference snapshots and assessments. Copy its exact link, pin it for later, or challenge a reviewed finding directly from the passage panel.
+5. Use the coverage board to define expected observations for each question and exact API/consumer/import surface. Assign consumer records explicitly; missing and failed observations remain gaps. Click an answer passage to see its native citations, disclosed search events, supporting reference snapshots and assessments. Copy its exact link, pin it for later, or challenge a reviewed finding directly from the passage panel.
 6. Review narrative findings, ask an assistant about selected evidence, and draft content briefs. Unsupported exact quotations are rejected; interpretations and proposed actions require human review.
 7. Agree on actions with criteria and follow-up evidence. Inspect public website readiness and import first-party traffic, Search Console and crawler exports.
-8. Create a dated report with reviewed findings, interpretations, actions and source records. Invite editors/viewers, receive client challenges, and preserve the response and edit history.
+8. Select and order findings/actions, write an executive summary, preview the chosen evidence and publish an immutable dated report. Source captures preserve original bytes and exact excerpts without claiming to reproduce what the model read. Invite editors/viewers, receive client challenges, and preserve the response and edit history.
 9. Configure daily or weekly UTC monitoring through a saved QStash EU connection. Reports and source/mention change alerts appear in the app. Optional Resend batch summaries go only to explicitly selected, accepted workspace members after the owner enables delivery. Provider acceptance, failures, and uncertain outcomes are recorded; no public posting or independent outreach occurs.
 
 ## Collection coverage
@@ -38,7 +38,7 @@ Citation means attribution, not factual support or causal influence. Ambiguous c
 
 A later source capture does not authenticate the page version used by a provider. Public website audits respect captured robots rules, permit only the configured public HTTPS hostname, validate DNS and redirects, and do not execute JavaScript. JSON-LD checks validate JSON syntax, not rich-result eligibility. Traffic imports preserve dates, mappings and rejected rows without automatically combining overlapping exports or claiming conversion attribution.
 
-See [BUILD_STATUS.md](BUILD_STATUS.md) for verification, limits and activation requirements.
+See [BUILD_STATUS.md](BUILD_STATUS.md) for verification, limits and activation requirements, and [the six-item acceptance ledger](docs/IMPLEMENTATION_LEDGER.md) for this release’s exact checks.
 
 ## Validation
 

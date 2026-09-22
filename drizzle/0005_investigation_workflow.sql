@@ -1,0 +1,3 @@
+CREATE UNIQUE INDEX `coverage_target_unique` ON `records` (`owner_id`, `study_id`, json_extract(payload, '$.questionId'), json_extract(payload, '$.questionVersion'), json_extract(payload, '$.surface')) WHERE kind = 'coverage';--> statement-breakpoint
+CREATE UNIQUE INDEX `assignment_run_unique` ON `records` (`owner_id`, `study_id`, json_extract(payload, '$.runId')) WHERE kind = 'assignment';--> statement-breakpoint
+CREATE UNIQUE INDEX `review_queue_passage_unique` ON `records` (`owner_id`, `study_id`, json_extract(payload, '$.runId'), json_extract(payload, '$.anchor.segmentIndex'), json_extract(payload, '$.anchor.start'), json_extract(payload, '$.anchor.end')) WHERE kind = 'review_task';

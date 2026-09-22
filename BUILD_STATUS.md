@@ -2,6 +2,10 @@
 
 Updated 2026-09-22. Continuing the original Brand Research Workbench. Part B autonomous publishing/outreach and physical activations remain separate.
 
+## Six-item investigation release
+
+The saved build package is implemented. [The acceptance ledger](docs/IMPLEMENTATION_LEDGER.md) records full-study coverage, connected claim/source/review inspection, immutable public source captures, the review queue, curated reports, 41 passing automated tests, responsive QA and the separate live gates. Public capture success was fixture-validated; an actual public-page attempt encountered this build environment’s DNS restriction and saved an unavailable result safely. No successful live capture is claimed.
+
 ## Implemented client product
 
 | Area | Delivered behavior |
@@ -15,8 +19,8 @@ Updated 2026-09-22. Continuing the original Brand Research Workbench. Part B aut
 | Monitoring | Daily/weekly UTC protocols, same-day retry deduplication, local pause, allowance exhaustion guard, evidence-linked mention/source alerts and terminal-batch reports |
 | Measurement | Full-study server-side name/alias presence, tracked share, competitor cohorts, source exposure and dated trends; protocol-matched period comparisons with exact pairs and exclusions; human recommendation/sentiment/rank classifications |
 | Complete-study search | Indexed word-prefix search across answers, prompts and disclosed URLs; keyset pagination; frozen audience/product/topic/market/language/purpose filters; exact-passage navigation |
-| Investigation | Exact passage links, citations distinguished by scope, disclosed search events, original response/native fields, hashes and screenshot attachments |
-| Sources | Categories, reverse answer links, exact URL comparisons, competitor-associated answer counts, preserved dated excerpts and source deep links |
+| Investigation | Connected answer/source/assessment workspace, accessible mobile tabs, exact passage links, citations distinguished by scope, disclosed search events, original response/native fields, hashes and screenshot attachments |
+| Sources | Immutable retrieved HTML/text bytes, exact excerpt references, failure history, categories, reverse answer links, exact URL comparisons, competitor-associated answer counts, preserved dated excerpts and source deep links |
 | Interpretation | Scoped narrative analysis with exact-quote validation; separate accepted/edited/rejected human review with evidence and history |
 | Advice | Evidence-scoped assistant and content briefs; exact reference verification, rejected invented quotes, unanswered questions, human-reviewed proposed actions |
 | Actions | Priorities, due/implementation dates, linked reviews, verification criteria and follow-up records |
@@ -24,7 +28,7 @@ Updated 2026-09-22. Continuing the original Brand Research Workbench. Part B aut
 | First-party signals | Mapped GA4 referral, Search Console and crawler CSV exports; preview, validation, rejected rows, originals and explicit attribution limits |
 | Collaboration | Study owner/editor/viewer roles, email-bound expiring invites, challenge/evidence threads, responses, version history and activity |
 | Notifications | Optional Resend batch summaries to owner-selected accepted members, immutable payloads, atomic delivery claim, idempotent replay, bounded retries, receipt/history UI; no live email sent in this session |
-| Delivery | Dated report snapshots, downloadable HTML, human-reviewed narrative and scoped actions, expiring/revocable links and finding-specific reader questions |
+| Delivery | Selected/ordered findings and actions, recoverable executive summaries, evidence-fingerprinted previews, dated report snapshots, downloadable HTML, human-reviewed narrative and scoped actions, expiring/revocable links and finding-specific reader questions |
 | User experience | Five main destinations, progressive filters, saved views, private evidence pins, draft recovery/conflict handling for core review forms, exact navigation URLs, older-run pagination, accessible components and reduced-motion CSS |
 
 ## Verified and not yet verified

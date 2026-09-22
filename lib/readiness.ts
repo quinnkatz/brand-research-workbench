@@ -11,7 +11,7 @@ function publicIp(value:string){
   const [a,b,c,d]=value.split(".").map(Number);if([a,b,c,d].some(n=>n>255))return false;
   return !(a===0||a===10||a===127||a===169&&b===254||a===172&&b>=16&&b<=31||a===192&&(b===168||b===0||b===2)||a===198&&(b===18||b===19||b===51&&c===100)||a===203&&b===0&&c===113||a===100&&b>=64&&b<=127||a>=224);
 }
-async function validateDns(host:string){
+export async function validateDns(host:string){
   let addresses=0;
   for(const type of ["A","AAAA"]){
     const r=await fetch(`https://cloudflare-dns.com/dns-query?name=${encodeURIComponent(host)}&type=${type}`,{headers:{accept:"application/dns-json"},redirect:"manual",signal:AbortSignal.timeout(5000)});

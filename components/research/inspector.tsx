@@ -67,6 +67,6 @@ export function Inspector({ run, records, demo, onReview, onEditReview, onRefres
         <div className="space-y-3 border-t pt-5"><h3 className="text-sm font-semibold">Screenshots & supporting files</h3>{run.attachments?.map(file => <a key={file.id} className="flex items-center gap-3 rounded-lg border p-3 text-sm hover:bg-slate-50" href={`/api/evidence?id=${file.id}`}><FileText size={17} className="text-muted-foreground"/><span className="min-w-0 flex-1 truncate">{file.name}</span><Download size={14}/></a>)}<Field label={uploading ? "Uploading evidence…" : "Attach a file"} hint="PNG, JPEG, PDF, text, or JSON · up to 5 MB. Files are saved with a content hash."><Input type="file" disabled={demo || readOnly || uploading} accept=".png,.jpg,.jpeg,.pdf,.txt,.json" onChange={e => { void upload(e.target.files?.[0]); e.target.value = ""; }}/></Field></div>
       </TabsContent>
     </Tabs>
-    <ClaimPanel claim={claim} run={run} records={records} demo={demo} readOnly={readOnly} onClose={() => chooseClaim(null)} onReview={onReview} onEditReview={onEditReview}/>
+    <ClaimPanel claim={claim} run={run} records={records} demo={demo} readOnly={readOnly} onClose={() => chooseClaim(null)} onReview={onReview} onEditReview={onEditReview} onRefresh={onRefresh} onSelect={chooseClaim}/>
   </article>;
 }

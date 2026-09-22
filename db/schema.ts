@@ -1,3 +1,4 @@
+import { sql } from "drizzle-orm";
 import { sqliteTable, text, index, integer, uniqueIndex } from "drizzle-orm/sqlite-core";
 export const studies = sqliteTable("studies", {
   id: text("id").primaryKey(), ownerId: text("owner_id").notNull(),
@@ -11,7 +12,11 @@ export const records = sqliteTable("records", {
   studyId: text("study_id").notNull().references(() => studies.id),
   kind: text("kind").notNull(), payload: text("payload").notNull(),
   createdAt: text("created_at").notNull(), updatedAt: text("updated_at").notNull(),
-}, t => [index("records_study_kind").on(t.ownerId, t.studyId, t.kind)]);
+}, t => [index("records_study_kind").on(t.ownerId, t.studyId, t.kind),
+  uniqueIndex("coverage_target_unique").on(t.ownerId,t.studyId,sql`json_extract(${t.payload}, '$.questionId')`,sql`json_extract(${t.payload}, '$.questionVersion')`,sql`json_extract(${t.payload}, '$.surface')`).where(sql`${t.kind} = 'coverage'`),
+  uniqueIndex("assignment_run_unique").on(t.ownerId,t.studyId,sql`json_extract(${t.payload}, '$.runId')`).where(sql`${t.kind} = 'assignment'`),
+  uniqueIndex("review_queue_passage_unique").on(t.ownerId,t.studyId,sql`json_extract(${t.payload}, '$.runId')`,sql`json_extract(${t.payload}, '$.anchor.segmentIndex')`,sql`json_extract(${t.payload}, '$.anchor.start')`,sql`json_extract(${t.payload}, '$.anchor.end')`).where(sql`${t.kind} = 'review_task'`),
+]);
 export const runs = sqliteTable("runs", {
   id: text("id").primaryKey(), ownerId: text("owner_id").notNull(),
   studyId: text("study_id").notNull().references(() => studies.id),

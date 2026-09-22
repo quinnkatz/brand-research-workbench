@@ -1,0 +1,68 @@
+import assert from 'node:assert/strict';
+import {createRequire} from 'node:module';
+import {readFileSync,readdirSync} from 'node:fs';
+import {resolve} from 'node:path';
+import test from 'node:test';
+const require=createRequire(import.meta.url),{Miniflare}=createRequire(require.resolve('wrangler/package.json'))('miniflare');
+test('Coverage → preserved source → passage review → action → curated report is isolated, durable and complete',async()=>{
+ let sourceText='Aster One must be hand-washed. The lid is not dishwasher safe.',sourceMode='ok';const outgoing=[];
+ const mf=new Miniflare({modules:['index.js',...readdirSync('dist/server',{recursive:true}).filter(p=>/\.m?js$/.test(p)&&p!=='index.js')].map(p=>({type:'ESModule',path:resolve('dist/server',p)})),modulesRoot:resolve('dist/server'),compatibilityDate:'2026-05-15',compatibilityFlags:['nodejs_compat'],d1Databases:['DB'],r2Buckets:['BUCKET'],outboundService:async req=>{
+  const u=new URL(req.url);outgoing.push(u.href);assert.equal(req.headers.has('authorization'),false);assert.equal(req.headers.has('cookie'),false);
+  if(u.hostname==='cloudflare-dns.com')return Response.json({Answer:[{type:u.searchParams.get('type')==='A'?1:28,data:u.searchParams.get('type')==='A'?(u.searchParams.get('name')==='private-source.com'?'127.0.0.1':'93.184.216.34'):'2606:4700:4700::1111'}]});
+  if(u.pathname==='/robots.txt')return new Response(sourceMode==='robots'?'User-agent: *\nDisallow: /':'User-agent: *\nAllow: /',{headers:{'content-type':'text/plain'}});
+  if(sourceMode==='redirect')return new Response(null,{status:302,headers:{location:'https://127.0.0.1/internal'}});
+  if(sourceMode==='blocked')return new Response('Denied',{status:403});
+  if(sourceMode==='pdf')return new Response('PDF',{headers:{'content-type':'application/pdf'}});
+  if(sourceMode==='large')return new Response('x'.repeat(1_500_001),{headers:{'content-type':'text/plain'}});
+  return new Response(`<html><head><title>Aster care</title></head><body><main>${sourceText}</main><script>doNotExecute()</script></body></html>`,{headers:{'content-type':'text/html'}});
+ }});
+ try{
+ const db=await mf.getD1Database('DB'),bucket=await mf.getR2Bucket('BUCKET');for(const file of readdirSync('drizzle').filter(f=>f.endsWith('.sql')).sort())for(const s of readFileSync(`drizzle/${file}`,'utf8').split('--> statement-breakpoint').filter(s=>s.trim()))await db.prepare(s).run();
+ const headers=user=>({'oai-authenticated-user-id':user,'oai-authenticated-user-email':`${user}@example.test`,origin:'https://workbench.test','content-type':'application/json'});
+ const post=(path,body,user='owner')=>mf.dispatchFetch(`https://workbench.test/api/${path}`,{method:'POST',headers:headers(user),body:JSON.stringify(body)}),get=(path,p,user='owner')=>mf.dispatchFetch(`https://workbench.test/api/${path}?${new URLSearchParams(p)}`,{headers:headers(user)});
+ const json=async(res,status=200)=>{assert.equal(res.status,status,await res.clone().text());return res.json();};
+ const {id:studyId}=await json(await post('research',{action:'onboard',brand:'Aster',profile:{},questions:[{prompt:'Can I put Aster One in the dishwasher?',intent:'verification'}]}),201);
+ const {id:otherStudy}=await json(await post('research',{action:'onboard',brand:'Private brand',profile:{},questions:[]},'other'),201);
+ await db.prepare("INSERT INTO study_members(id,study_id,user_id,email,role,created_at) VALUES(?,?,'viewer','viewer@example.test','viewer',?)").bind(crypto.randomUUID(),studyId,new Date().toISOString()).run();
+ let state=await json(await get('workbench',{action:'state',studyId}));const q=state.records.find(r=>r.kind==='question');
+ const apiTarget=await json(await post('investigation',{action:'coverage',studyId,questionId:q.id,surface:'api:openai',expected:2}),201),consumerTarget=await json(await post('investigation',{action:'coverage',studyId,questionId:q.id,surface:'consumer:chatgpt',expected:2}),201);
+ assert.equal((await post('investigation',{action:'coverage',studyId,questionId:q.id,surface:'api:openai',expected:2},'viewer')).status,403);
+ const phrase='Aster One is dishwasher safe.',sourceUrl='https://care-public.com/aster';
+ const norm=(answer,completion='complete')=>JSON.stringify({parser_version:'fixture',completion,segments:answer?[{text:answer,raw_path:'$.fixture'}]:[],sources:[{url:sourceUrl,title:'Aster care',role:'cited',raw_path:'$.fixture'}],citations:[{segment_index:0,raw_path:'$.citations',native:{type:'url_citation',url:sourceUrl,start_index:0,end_index:phrase.length}}],tool_events:[],warnings:[],model_reported:'fixture-model'});
+ const runId=crypto.randomUUID(),consumerId=crypto.randomUUID(),failedId=crypto.randomUUID();
+ const insert=(id,prompt,environment='api',provider='openai',status='complete',settings={},text=phrase,date='2026-09-01T00:00:00.000Z')=>db.prepare('INSERT INTO runs(id,owner_id,study_id,provider,environment,model,prompt,status,search,settings,normalized,created_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,?)').bind(id,'owner',studyId,provider,environment,'fixture-model',prompt,status,'auto',JSON.stringify(settings),norm(text,status),date);
+ await db.batch([insert(runId,q.payload.prompt,'api','openai','complete',{questionId:q.id,questionVersion:q.updated_at}),insert(consumerId,q.payload.prompt,'consumer','chatgpt','manually_recorded',{location:'Miami',memory:'unknown'}),insert(failedId,q.payload.prompt,'api','openai','failed',{questionId:q.id,questionVersion:q.updated_at},'')]);
+ for(let o=0;o<510;o+=51)await db.batch(Array.from({length:51},()=>insert(crypto.randomUUID(),'Unassigned older archive','api','openai','complete',{},'Uncited brand statement.','2026-09-20T00:00:00.000Z')));
+ let board=await json(await get('investigation',{action:'coverage',studyId}));assert.equal(board.total,513);assert.equal(board.cells.find(c=>c.id===apiTarget.id).counts.complete,1);assert.equal(board.cells.find(c=>c.id===apiTarget.id).counts.failed,1);assert.equal(board.cells.find(c=>c.id===apiTarget.id).counts.missing,1);assert.equal(board.cells.find(c=>c.id===consumerTarget.id).counts.complete,0);
+ assert.equal((await post('investigation',{action:'assign',studyId,runId,targetId:consumerTarget.id})).status,400);
+ await json(await post('investigation',{action:'assign',studyId,runId:consumerId,targetId:consumerTarget.id}),201);board=await json(await get('investigation',{action:'coverage',studyId}));assert.equal(board.cells.find(c=>c.id===consumerTarget.id).counts.complete,1);assert.equal(board.unassigned.length,510);
+ assert.equal((await get('investigation',{action:'coverage',studyId},'other')).status,404);
+ const queue=await json(await post('investigation',{action:'queue',studyId,runId,claim:phrase,anchor:{segmentIndex:0,start:0,end:phrase.length},priority:'high'}),201);
+ const replay=await json(await post('investigation',{action:'queue',studyId,runId,claim:phrase,anchor:{segmentIndex:0,start:0,end:phrase.length},priority:'high'}));assert.equal(replay.id,queue.id);
+ assert.equal((await post('investigation',{action:'queue',studyId,runId,claim:'Fabricated.',anchor:{segmentIndex:0,start:0,end:11},priority:'high'})).status,400);
+ const {id:sourceId}=await json(await post('investigation',{action:'capture',studyId,runId,url:sourceUrl}),201);const source=await json(await get('investigation',{action:'source',studyId,id:sourceId}));assert.equal(source.text.text.includes(sourceText),true);assert.equal(source.text.text.includes('doNotExecute'),false);const raw=await get('investigation',{action:'source_original',studyId,id:sourceId});assert.equal(raw.headers.get('content-type'),'application/octet-stream');assert.match(await raw.text(),/doNotExecute/);
+ assert.equal((await get('investigation',{action:'source',studyId,id:sourceId},'other')).status,404);assert.equal((await post('investigation',{action:'capture',studyId,runId,url:'https://undisclosed.com'})).status,400);
+ const ref={sourceId,start:0,end:source.text.text.length,text:source.text.text};
+ const fact=await json(await post('workbench',{action:'record',studyId,kind:'fact',payload:{claim:'The lid requires hand washing.',product:'Aster One',source:sourceUrl,excerpt:sourceText,checkedAt:'2026-09-22',status:'verified'}}),201);
+ const payload={runId,claim:phrase,anchor:{segmentIndex:0,start:0,end:phrase.length},verdict:'contradicted',evidenceLevel:'observed',materiality:'high',factIds:[fact.id],sourceRefs:[ref],explanation:'The dated care page says the lid is not dishwasher safe.',recommendation:'Clarify lid care.'};
+ assert.equal((await post('workbench',{action:'record',studyId,kind:'review',payload:{...payload,sourceRefs:[{...ref,text:'Fabricated source'}]}})).status,400);
+ assert.equal((await post('workbench',{action:'record',studyId:otherStudy,kind:'review',payload},'other')).status,404);
+ const {id:reviewId}=await json(await post('workbench',{action:'record',studyId,kind:'review',payload}),201);
+ assert.equal((await post('workbench',{action:'record',studyId,kind:'review',payload},'viewer')).status,403);
+ const action=await json(await post('research',{action:'action_item',studyId,title:'Clarify care instructions',status:'proposed',priority:'high',reviewIds:[reviewId],verification:'Repeat the exact question and inspect lid-care statements.',verificationRunIds:[]}),201);
+ await json(await post('workbench',{action:'record',studyId,kind:'fact',payload:{claim:'UNSELECTED INTERNAL STRATEGY',source:sourceUrl,excerpt:'Unrelated confidential reference.',checkedAt:'2026-09-22',status:'needs_review'}}),201);
+ const select={studyId,title:'Aster pilot',summary:'The lid-care claim conflicts with the dated page.',reviewIds:[reviewId],actionIds:[action.id],expiresInDays:14};
+ const preview=await json(await post('research',{action:'curated_preview',...select}));assert.equal(preview.observations,1);assert.match(preview.html,/hand-washed/);assert.equal(preview.html.includes('UNSELECTED INTERNAL STRATEGY'),false);assert.match(preview.html,/Executive summary/);assert.match(preview.html,/Study coverage at publication/);
+ assert.equal((await post('research',{action:'curated_snapshot',...select,fingerprint:'stale'})).status,409);
+ const report=await json(await post('research',{action:'curated_snapshot',...select,fingerprint:preview.fingerprint}),201);const row=await db.prepare('SELECT * FROM report_snapshots WHERE id=?').bind(report.id).first();const saved=await (await bucket.get(row.object_key)).json();assert.equal(saved.records.some(r=>r.kind==='review_task'),false);assert.equal(saved.records.some(r=>r.payload.claim==='UNSELECTED INTERNAL STRATEGY'),false);
+ const originalHash=source.source.payload.contentHash;sourceText='Updated version: Aster One is now dishwasher safe.';const newer=await json(await post('investigation',{action:'capture',studyId,runId,url:sourceUrl}),201);const newerSource=await json(await get('investigation',{action:'source',studyId,id:newer.id}));assert.notEqual(newerSource.source.payload.contentHash,originalHash);assert.match((await json(await get('investigation',{action:'source',studyId,id:sourceId}))).text.text,/hand-washed/);assert.equal((await (await bucket.get(row.object_key)).json()).html,saved.html);
+ sourceMode='blocked';const blocked=await json(await post('investigation',{action:'capture',studyId,runId,url:sourceUrl}),201);assert.equal(blocked.status,'unavailable');assert.match(blocked.error,/403/);state=await json(await get('workbench',{action:'state',studyId}));assert.equal(state.records.find(r=>r.id===blocked.id).payload.status,'unavailable');assert.equal(state.records.find(r=>r.id===reviewId).payload.sourceSnapshots[0].contentHash,originalHash);
+ for(const mode of ['redirect','robots','pdf','large']){sourceMode=mode;const result=await json(await post('investigation',{action:'capture',studyId,runId,url:sourceUrl}),201);const item=await db.prepare('SELECT payload FROM records WHERE id=?').bind(result.id).first();assert.equal(JSON.parse(item.payload).status,'unavailable',mode);}
+ assert.equal(outgoing.some(u=>u.includes('127.0.0.1')),false);
+ // A disclosed source can still resolve privately; reject it before retrieval.
+ await db.prepare('UPDATE runs SET normalized=? WHERE id=?').bind(norm(phrase).replaceAll('care-public.com','private-source.com'),runId).run();sourceMode='ok';const privateCapture=await json(await post('investigation',{action:'capture',studyId,runId,url:'https://private-source.com/aster'}),201);assert.equal(JSON.parse((await db.prepare('SELECT payload FROM records WHERE id=?').bind(privateCapture.id).first()).payload).status,'unavailable');assert.equal(outgoing.some(u=>new URL(u).hostname==='private-source.com'),false);
+ assert.equal((await post('research',{action:'curated_snapshot',...select,fingerprint:preview.fingerprint})).status,409);
+ await db.prepare('UPDATE report_snapshots SET expires_at=? WHERE id=?').bind('2000-01-01',report.id).run();const token=report.path.split('/').at(-1);assert.equal((await post('report-review',{token,author:'Client',message:'Check the lid.',reviewId})).status,404);
+ const factRecord=state.records.find(r=>r.id===fact.id);await json(await post('workbench',{action:'record',studyId,kind:'fact',id:fact.id,expectedUpdatedAt:factRecord.updated_at,payload:{...factRecord.payload,claim:'Updated reference requires recheck.'}}));const retained=JSON.parse((await db.prepare('SELECT payload FROM records WHERE id=?').bind(reviewId).first()).payload);assert.equal(retained.factSnapshots[0].payload.claim,'The lid requires hand washing.');assert.equal(retained.reviewerId,'owner');
+ }finally{await mf.dispose();}
+});

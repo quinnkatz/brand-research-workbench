@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { captureText } from "@/lib/source-capture";
 import { validAnchor } from "@/lib/claims";
 import type { Run } from "@/lib/research";
 import { AppError, audit, boundedText, bucket, db, failure, idSchema, jsonBody, ownRun, ownStudy, owner, publicRecord, publicRun, reply, saveEvidence, urlSchema } from "@/lib/server";
@@ -13,7 +14,7 @@ const exactText = (max: number) => z.string().min(1).max(max).refine(v => !!v.tr
 const optionalText = (max = 10000) => z.string().max(max).default("");
 const factSchema = z.object({ claim: text(4000), product: optionalText(300), productId: idSchema.optional(), source: urlSchema, excerpt: text(8000), checkedAt: text(50), status: z.enum(["verified", "needs_review", "disputed"]), notes: optionalText(8000) });
 const questionSchema = z.object({ prompt: exactText(12000), intent: z.enum(["discovery", "comparison", "verification", "purchase", "support"]), notes: optionalText(4000), origin: z.enum(["customer", "researcher", "template", "ai_suggested"]).default("researcher"), tags: z.array(text(60)).max(12).default([]), audience: optionalText(300), market: optionalText(100), language: optionalText(100), topic: optionalText(100), purpose:z.enum(["baseline","diagnostic","injected_facts"]).default("baseline"), productId: idSchema.optional() });
-const reviewSchema = z.object({ runId: idSchema, claim: exactText(6000), anchor: z.object({ segmentIndex: z.number().int().min(0), start: z.number().int().min(0), end: z.number().int().min(1) }).nullable().optional(), impact: optionalText(4000), recommendation: optionalText(8000), verdict: z.enum(["supported", "contradicted", "uncertain", "mixed", "context_dependent", "omitted"]), evidenceLevel: z.enum(["observed", "inferred", "experimentally_supported", "unknown"]), materiality: z.enum(["low", "medium", "high"]), factIds: z.array(idSchema).max(50), explanation: text(10000), hypothesis: optionalText(8000), nextTest: optionalText(8000) });
+const reviewSchema = z.object({ runId: idSchema, claim: exactText(6000), anchor: z.object({ segmentIndex: z.number().int().min(0), start: z.number().int().min(0), end: z.number().int().min(1) }).nullable().optional(), impact: optionalText(4000), recommendation: optionalText(8000), verdict: z.enum(["supported", "contradicted", "uncertain", "mixed", "context_dependent", "omitted"]), evidenceLevel: z.enum(["observed", "inferred", "experimentally_supported", "unknown"]), materiality: z.enum(["low", "medium", "high"]), factIds: z.array(idSchema).max(50), sourceRefs: z.array(z.object({sourceId:idSchema,start:z.number().int().min(0),end:z.number().int().min(1),text:exactText(8000)})).max(10).default([]), explanation: text(10000), hypothesis: optionalText(8000), nextTest: optionalText(8000) });
 
 async function studyData(studyId: string, uid: string) {
   const access = await ownStudy(studyId, uid); uid = access.owner_id;
@@ -90,7 +91,16 @@ export async function POST(req: Request) {
           if (!fact) throw new AppError("One of the selected facts is no longer available.");
           factSnapshots.push(publicRecord(fact));
         }
-        Object.assign(payload, { factSnapshots });
+        const sourceSnapshots=[];
+        for(const reference of review.sourceRefs){
+          const row=await db().prepare("SELECT * FROM records WHERE id=? AND owner_id=? AND study_id=? AND kind='source'").bind(reference.sourceId,uid,studyId).first();
+          if(!row)throw new AppError("The selected source does not belong to this study.");
+          const source=publicRecord(row),p=source.payload;
+          const text=p.provenance==="application_retrieved_later"?(await captureText(uid,source)).text:p.provenance==="researcher_supplied_capture"?p.excerpt:"";
+          if(!text||reference.end>text.length||reference.end<=reference.start||text.slice(reference.start,reference.end)!==reference.text)throw new AppError("The selected source excerpt does not match its preserved text.");
+          sourceSnapshots.push({...reference,captureId:p.captureId,url:p.url,finalUrl:p.finalUrl,provenance:p.provenance,capturedAt:p.capturedAt,contentHash:p.contentHash});
+        }
+        Object.assign(payload, { factSnapshots,sourceSnapshots,reviewerId:actor,reviewedAt:now,provider:run.provider,environment:run.environment });
       }
       if (id) {
         const old = await db().prepare("SELECT * FROM records WHERE id = ? AND owner_id = ? AND study_id = ? AND kind = ?").bind(id, uid, studyId, kind).first<any>();

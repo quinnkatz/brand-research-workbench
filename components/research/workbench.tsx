@@ -14,6 +14,9 @@ import { exampleRecords, exampleRuns, exampleStudy } from "@/lib/example";
 import { StudyForm, RecordForm } from "./forms";
 import { Onboarding } from "./onboarding";
 import { CollectForm, emptyConnections } from "./collect";
+import { Coverage } from "./coverage";
+import { ReviewQueue } from "./review-queue";
+import { investigationApi } from "@/lib/client";
 import { CollectionPlan } from "./collection-plan";
 import { ConnectionsPage } from "./connections";
 const ComparePage = lazy(() => import("./compare").then(module => ({ default: module.ComparePage })));
@@ -23,7 +26,7 @@ import { Inspector } from "./inspector";
 const Overview = lazy(() => import("./overview").then(module => ({ default: module.Overview })));
 import { Narrative } from "./narrative";
 import { Sources } from "./sources";
-import { Decisions } from "./decisions";
+import { ActionForm, Decisions } from "./decisions";
 const Delivery = lazy(() => import("./delivery").then(module => ({ default: module.Delivery })));
 const Monitoring = lazy(() => import("./monitoring").then(m => ({default:m.Monitoring})));
 const Team = lazy(() => import("./team").then(m => ({default:m.Team})));
@@ -39,12 +42,14 @@ import { FirstInvestigation } from "./first-investigation";
 import { EvidencePins } from "./pins";
 import { RecordHistory } from "./record-history";
 import { QuestionTools } from "./question-tools";
-import { uniqueQuoteAnchor } from "@/lib/claims";
+import { uniqueQuoteAnchor,validAnchor } from "@/lib/claims";
 import type { SelectedClaim } from "@/lib/claims";
 import { Choice, Note, SourceLink, Status } from "./ui";
 
-type Section = "search" | "overview" | "observations" | "questions" | "collect" | "narrative" | "sources" | "compare" | "decisions" | "report" | "facts" | "connections" | "method" | "monitoring" | "team" | "products" | "readiness" | "traffic" | "assistant" | "challenges" | "classifications";
+type Section = "coverage" | "review_queue" | "search" | "overview" | "observations" | "questions" | "collect" | "narrative" | "sources" | "compare" | "decisions" | "report" | "facts" | "connections" | "method" | "monitoring" | "team" | "products" | "readiness" | "traffic" | "assistant" | "challenges" | "classifications";
 const sections = [
+  { id: "coverage", label: "Coverage board", icon: Layers3 },
+  { id: "review_queue", label: "Review queue", icon: FileCheck2 },
   { id: "search", label: "Search all evidence", icon: ScanText },
   { id: "overview", label: "Brand portrait", icon: ChartNoAxesCombined },
   { id: "observations", label: "Observations", icon: ScanText },
@@ -59,13 +64,15 @@ const extensions = [{id:"monitoring",label:"Monitoring & alerts",icon:CalendarCl
 const allSections = [...sections, ...setup, ...extensions];
 const destinations = [
   {label:"Brand portrait",icon:ChartNoAxesCombined,default:"overview",pages:["overview","classifications","traffic"]},
-  {label:"Investigate",icon:ScanText,default:"observations",pages:["observations","search","narrative","sources","compare"]},
+  {label:"Investigate",icon:ScanText,default:"observations",pages:["observations","review_queue","search","narrative","sources","compare"]},
   {label:"Improve & deliver",icon:Target,default:"assistant",pages:["assistant","decisions","readiness","report","challenges"]},
-  {label:"Collect & monitor",icon:CalendarClock,default:"collect",pages:["collect","questions","monitoring"]},
+  {label:"Collect & monitor",icon:CalendarClock,default:"collect",pages:["collect","coverage","questions","monitoring"]},
   {label:"Brand workspace",icon:Layers3,default:"facts",pages:["facts","products","connections","team","method"]},
 ];
 const scopedSections: Section[] = ["overview", "observations", "narrative", "sources", "compare", "decisions", "report", "assistant", "classifications"];
 const titles: Record<Section, [string, string]> = {
+  coverage: ["Know what you have. See what’s missing.", "Plan observations across platforms without mixing consumer experiences and API experiments."],
+  review_queue: ["Turn a question into a finding.", "Prioritize passages, review their evidence and connect the result to an action."],
   search: ["Find it. Follow it. Understand it.","Search the full evidence archive and open the original answer at its supporting passage."],
   overview: ["Your brand, through AI", "Understand the picture forming around your brand. Follow every measurement back to the answers behind it."],
   observations: ["The evidence, in full", "Open an answer. Select a passage. Inspect the sources and the conditions that produced the record."],
@@ -101,7 +108,8 @@ export function Workbench({ user }: { user: { displayName: string } | null }) {
   const [loading, setLoading] = useState(!!user), [error, setError] = useState(""), [demo, setDemo] = useState(false), [ready, setReady] = useState(false);
   const [onboarding, setOnboarding] = useState<"new" | "edit" | null>(null), [editStudy, setEditStudy] = useState(false);
   const [recordForm, setRecordForm] = useState<{ kind: "fact" | "question" | "review"; record?: ResearchRecord; selection?: SelectedClaim } | null>(null);
-  const [collect, setCollect] = useState<{ prompt: string; mode?: string } | null>(null), [connections, setConnections] = useState(emptyConnections);
+  const [collect, setCollect] = useState<{ prompt: string; mode?: string; targetId?:string } | null>(null), [connections, setConnections] = useState(emptyConnections);
+  const [actionReview,setActionReview]=useState<ResearchRecord|null>(null);
   const [facets,setFacets]=useState<Record<string,string[]>>({});
   const loadSequence = useRef(0), currentStudy = useRef("");
   const study = studies.find(s => s.id === studyId), selected = detail?.id === selectedId ? detail : runs.find(r => r.id === selectedId);
@@ -124,13 +132,13 @@ export function Workbench({ user }: { user: { displayName: string } | null }) {
   function explore(p?:URLSearchParams) { loadSequence.current++; setLoading(false); setError(""); setDemo(true); setStudies([exampleStudy]); setStudyId(exampleStudy.id); setRuns(exampleRuns); setTotalRuns(exampleRuns.length); setRecords(exampleRecords); setSelectedId(p?.get("run")||exampleRuns[0].id); setDetail(null); setScope({ ...emptyScope(), environment: "api",...Object.fromEntries(Object.keys(emptyScope()).filter(k=>p?.has(k)).map(k=>[k,p!.get(k)!])) }); setSection(allSections.some(x=>x.id===p?.get("section"))?p!.get("section") as Section:"overview"); }
   function exitDemo() { setStudies([]); setStudyId(""); currentStudy.current = ""; setRuns([]); setRecords([]); setSelectedId(""); setDetail(null); setScope(emptyScope()); setDemo(false); setSection("overview"); window.history.replaceState(null, "", "/"); void refresh("", undefined, true); }
   useEffect(() => { const p = new URLSearchParams(window.location.search); const s = p.get("section"); if (allSections.some(x => x.id === s)) setSection(s as Section); setScope({ ...emptyScope(), ...Object.fromEntries(Object.keys(emptyScope()).filter(k => p.has(k)).map(k => [k, p.get(k)!])) }); if (p.get("example") === "1") explore(p); else if (user) void refresh(p.get("study") || "", p.get("run") || undefined); setReady(true); }, [user]);
-  useEffect(() => { if (!ready || loading) return; const p = new URLSearchParams(); const old=new URLSearchParams(window.location.search); if(section==="search")for(const [key,value] of old)if(key.startsWith("find_"))p.set(key,value); if(section==="observations"&&old.get("run")===selectedId){for(const key of ["claim","tab"])if(old.has(key))p.set(key,old.get(key)!);} if (studyId) p.set("study", studyId); p.set("section", section); if(section==="compare"){for(const key of ["left","right"])if(old.has(key))p.set(key,old.get(key)!);}if(section==="challenges"&&old.has("review"))p.set("review",old.get("review")!);if(section==="sources"&&old.has("source"))p.set("source",old.get("source")!); if (demo) p.set("example", "1"); for (const [key, value] of Object.entries(scope)) if (value) p.set(key, value); if (selectedId && section === "observations") p.set("run", selectedId); window.history.replaceState(null, "", `/?${p}`); }, [ready, loading, studyId, section, scope, selectedId, demo]);
+  useEffect(() => { if (!ready || loading) return; const p = new URLSearchParams(); const old=new URLSearchParams(window.location.search); if(section==="search")for(const [key,value] of old)if(key.startsWith("find_"))p.set(key,value); if(section==="observations"&&old.get("run")===selectedId){for(const key of ["claim","tab","sourceEvidence"])if(old.has(key))p.set(key,old.get(key)!);} if (studyId) p.set("study", studyId); p.set("section", section); if(section==="compare"){for(const key of ["left","right"])if(old.has(key))p.set(key,old.get(key)!);}if(["challenges","decisions"].includes(section)&&old.has("review"))p.set("review",old.get("review")!);if(section==="sources"&&old.has("source"))p.set("source",old.get("source")!); if (demo) p.set("example", "1"); for (const [key, value] of Object.entries(scope)) if (value) p.set(key, value); if (selectedId && section === "observations") p.set("run", selectedId); window.history.replaceState(null, "", `/?${p}`); }, [ready, loading, studyId, section, scope, selectedId, demo]);
   useEffect(() => { const onPop = () => { const p = new URLSearchParams(window.location.search); const s = p.get("section"); if (allSections.some(x => x.id === s)) setSection(s as Section); setScope({ ...emptyScope(), ...Object.fromEntries(Object.keys(emptyScope()).filter(k => p.has(k)).map(k => [k, p.get(k)!])) }); setSelectedId(p.get("run") || ""); if (p.get("study") && p.get("study") !== studyId && authenticated) void refresh(p.get("study")!); }; window.addEventListener("popstate", onPop); return () => window.removeEventListener("popstate", onPop); }, [studyId, enabled]);
   useEffect(() => { let current = true; if (selectedId && !demo && user) readApi("run", { id: selectedId }).then(data => { if (current && data.run.study_id === studyId) setDetail(data.run); }).catch(e => { if (current) toast.error(e.message); }); return () => { current = false; }; }, [selectedId, studyId, demo, user]);
   function navigate(s: string) { if (!allSections.some(x => x.id === s)) return; if (s !== section) window.history.pushState(null, "", window.location.href); setSection(s as Section); }
-  async function openRun(id:string,quote?:string){
+  async function openRun(id:string,quote?:string,savedAnchor?:{segmentIndex:number;start:number;end:number}){
     const run=runs.find(r=>r.id===id)||detail?.id===id&&detail;
-    const open=(observed?:Run)=>{const url=new URL(window.location.href);url.searchParams.set("section","observations");url.searchParams.set("run",id);url.searchParams.delete("claim");url.searchParams.set("tab","answer");if(quote&&observed){const anchor=uniqueQuoteAnchor(observed,quote);if(anchor)url.searchParams.set("claim",`${anchor.segmentIndex}:${anchor.start}:${anchor.end}`);else toast.info("This quote could not be located uniquely. Inspect the full answer before choosing a passage.");}window.history.pushState(null,"",url);setSelectedId(id);setSection("observations");window.dispatchEvent(new PopStateEvent("popstate"));};
+    const open=(observed?:Run)=>{const url=new URL(window.location.href);url.searchParams.set("section","observations");url.searchParams.set("run",id);url.searchParams.delete("claim");url.searchParams.delete("sourceEvidence");url.searchParams.set("tab","answer");if(quote&&observed){const anchor=savedAnchor&&validAnchor(observed,savedAnchor,quote)?savedAnchor:uniqueQuoteAnchor(observed,quote);if(anchor)url.searchParams.set("claim",`${anchor.segmentIndex}:${anchor.start}:${anchor.end}`);else toast.info("This quote could not be located uniquely. Inspect the full answer before choosing a passage.");}window.history.pushState(null,"",url);setSelectedId(id);setSection("observations");window.dispatchEvent(new PopStateEvent("popstate"));};
     if(quote&&!run&&authenticated){try{const data=await readApi("run",{id});if(data.run.study_id!==studyId)throw new Error("The observation is outside this brand.");setDetail(data.run);open(data.run);}catch(e){toast.error((e as Error).message);}}else open(run||undefined);
   }
   async function refreshRun() { await refresh(); if (selectedId) { const data = await readApi("run", { id: selectedId }); setDetail(data.run); } }
@@ -161,6 +169,8 @@ export function Workbench({ user }: { user: { displayName: string } | null }) {
       {study && section === "sources" && <Sources study={study} runs={visibleRuns} records={records} enabled={enabled} onOpen={openRun} onRefresh={refresh}/>}
       {study && section === "decisions" && <Decisions study={study} runs={visibleRuns} records={records} enabled={enabled} onEdit={record => setRecordForm({ kind: "review", record })} onOpen={openRun} onRefresh={refresh}/>}
       {study && section === "report" && <Suspense fallback={<p role="status">Opening report workspace…</p>}><Delivery key={study.id} study={study} runs={visibleRuns} records={records} enabled={enabled} authenticated={authenticated} demo={demo}/></Suspense>}
+      {study&&section==="coverage"&&<Coverage key={study.id} study={study} records={records} runs={runs} enabled={enabled} demo={demo} onOpen={openRun} onRefresh={refresh} onPlan={()=>navigate("collect")} onCapture={(prompt,mode,targetId)=>setCollect({prompt,mode,targetId})}/>}
+      {study&&section==="review_queue"&&<ReviewQueue key={study.id} study={study} records={records} enabled={enabled} onOpen={openRun} onEdit={record=>setRecordForm({kind:"review",record})} onRefresh={refresh} onAction={id=>setActionReview(records.find(r=>r.id===id)||null)}/>}
       {study && section === "collect" && <CollectionPlan key={study.id} study={study} records={records} connections={connections} enabled={enabled} onRefresh={refresh} onOpen={openRun} onCapture={mode => setCollect({ prompt: "", mode })} onQuestions={() => navigate("questions")} onConnect={() => navigate("connections")}/>}
       {study && section === "facts" && <div className="space-y-4"><div className="mb-5 flex flex-wrap gap-3"><Button variant="outline" disabled={!enabled} onClick={() => setOnboarding("edit")}>Positioning & competitors</Button><Button variant="ghost" disabled={!enabled} onClick={() => setEditStudy(true)}>Study details</Button></div>{facts.map(f => <article key={f.id} className="rounded-xl border bg-white p-6"><div className="flex flex-wrap items-center gap-2"><Status value={f.payload.status}/><span className="text-sm text-muted-foreground">{f.payload.product}</span><span className="ml-auto text-xs text-muted-foreground">Checked {f.payload.checkedAt}</span><RecordHistory record={f} enabled={authenticated}/><Button size="sm" variant="ghost" disabled={!enabled} onClick={() => setRecordForm({ kind: "fact", record: f })}>Edit</Button></div><h2 className="mt-4 text-base font-semibold">{f.payload.claim}</h2><blockquote className="my-4 border-l-2 border-blue-200 pl-4 text-sm leading-7 text-slate-600">{f.payload.excerpt}</blockquote><SourceLink url={f.payload.source}/>{f.payload.notes && <p className="mt-3 text-sm text-muted-foreground">{f.payload.notes}</p>}</article>)}{!facts.length && <Empty title="Add the facts a customer should be able to verify" description="Include a product version, exact source excerpt, and date. These references support your reviews; they are not injected into collection questions."/>}<Note>Preferred positioning is not automatically a verified fact. Earlier claim reviews retain the reference version used when they were saved.</Note></div>}
       {study && section === "questions" && <div className="space-y-5"><QuestionTools study={study} records={records} enabled={enabled} onRefresh={refresh}/>{questions.length ? <div className="overflow-hidden rounded-xl border bg-white"><Table><TableHeader><TableRow><TableHead className="pl-5">Question</TableHead><TableHead>Intent / origin</TableHead><TableHead className="text-right">Actions</TableHead></TableRow></TableHeader><TableBody>{questions.map(q => <TableRow key={q.id}><TableCell className="max-w-xl whitespace-normal py-5 pl-5"><p className="text-sm font-medium leading-6">{q.payload.prompt}</p>{q.payload.notes && <p className="mt-2 text-xs leading-5 text-muted-foreground">{q.payload.notes}</p>}</TableCell><TableCell className="text-sm capitalize">{q.payload.intent}<span className="mt-1 block text-xs text-muted-foreground">{(q.payload.origin || "researcher").replaceAll("_", " ")}</span></TableCell><TableCell className="text-right"><RecordHistory record={q} enabled={authenticated}/><Button size="sm" variant="ghost" disabled={!enabled} onClick={() => setRecordForm({ kind: "question", record: q })}>Edit</Button><Button size="sm" variant="outline" disabled={!enabled} onClick={() => setCollect({ prompt: q.payload.prompt })}>Use<ArrowRight size={14}/></Button></TableCell></TableRow>)}</TableBody></Table></div> : <Empty title="Save the questions that matter" description="Bring questions from sales conversations, customer support, and actual research. Starter questions can help define an initial study."/>}<Button variant="outline" onClick={() => navigate("collect")}>Build a collection plan<ArrowRight size={15}/></Button></div>}
@@ -179,8 +189,9 @@ export function Workbench({ user }: { user: { displayName: string } | null }) {
     </div><footer className="mt-auto flex flex-wrap justify-between gap-2 px-8 py-6 text-xs text-muted-foreground"><span>Brand Research / Evidence workspace</span><span>Original records. Visible uncertainty.</span></footer>
   </SidebarInset><Toaster position="bottom-right"/>
     {onboarding && <Onboarding study={onboarding === "edit" ? study : undefined} onClose={() => setOnboarding(null)} onSaved={async id => { await refresh(id); navigate("overview"); toast.success("Brand workspace saved."); }}/>} {editStudy && <StudyForm study={study} onClose={() => setEditStudy(false)} onSaved={async id => { await refresh(id); }}/>}
+    {actionReview&&study&&<ActionForm study={study} records={records} runs={runs} initial={{title:actionReview.payload.recommendation?.slice(0,200)||"",reviewIds:[actionReview.id],verification:actionReview.payload.nextTest||""}} onClose={()=>setActionReview(null)} onSaved={refresh}/>}
     {recordForm && study && <RecordForm {...recordForm} studyId={study.id} runId={recordForm.record?.payload.runId || selectedId} facts={facts} products={records.filter(r=>r.kind==="product")} onClose={() => setRecordForm(null)} onSaved={async () => { await refresh(); toast.success("Research record saved."); }}/>}
-    {collect && study && <CollectForm studyId={study.id} initialPrompt={collect.prompt} initialMode={collect.mode} connections={connections} onClose={() => setCollect(null)} onConnect={() => { setCollect(null); navigate("connections"); }} onSaved={async id => { navigate("observations"); await refresh(study.id, id); toast.success("Observation saved."); }}/>}
+    {collect && study && <CollectForm studyId={study.id} initialPrompt={collect.prompt} initialMode={collect.mode} connections={connections} onClose={() => setCollect(null)} onConnect={() => { setCollect(null); navigate("connections"); }} onSaved={async id => { if(collect.targetId){try{await investigationApi("assign",{studyId:study.id,targetId:collect.targetId,runId:id});}catch(e){toast.warning(`Observation saved; assignment needs review: ${(e as Error).message}`);}} navigate("observations"); await refresh(study.id, id); toast.success("Observation saved."); }}/>}
   </SidebarProvider>;
 }
 function Empty({ title, description }: { title: string; description: string }) { return <div className="rounded-xl border bg-white px-6 py-16 text-center"><MessageSquareText size={30} className="mx-auto mb-5 text-slate-300"/><h2 className="font-semibold">{title}</h2><p className="mx-auto mt-3 max-w-lg text-sm leading-7 text-muted-foreground">{description}</p></div>; }
