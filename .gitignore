@@ -54,3 +54,6 @@ __pycache__/
 
 # Local-only Worker vars (e.g. VAULT_MASTER_KEY for local dev)
 .dev.vars
+
+# Recovered local provider keys (never commit)
+RECOVERED-KEYS.txt

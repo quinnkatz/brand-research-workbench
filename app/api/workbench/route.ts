@@ -122,8 +122,7 @@ export async function POST(req: Request) {
     if (body.action === "models") {
       const { provider, connectionId, key: enteredKey } = z.object({ provider: providerSchema, connectionId:idSchema.optional(), key: z.string().trim().min(10).max(512).optional() }).parse(body);
       const key = connectionId ? await openSecret(await connectionFor(actor,connectionId,provider)) : z.string().min(10).max(512).parse(enteredKey);
-      if(provider==="perplexity_api")throw new AppError("Sonar model IDs are entered directly. Use a Sonar model such as sonar or sonar-pro; verify account access with a deliberate collection request.");
-      const url = provider === "xai" ? "https://api.x.ai/v1/models" : provider === "openai" ? "https://api.openai.com/v1/models" : provider === "anthropic" ? "https://api.anthropic.com/v1/models?limit=1000" : "https://generativelanguage.googleapis.com/v1beta/models?pageSize=1000";
+      const url = provider === "xai" ? "https://api.x.ai/v1/models" : provider === "openai" ? "https://api.openai.com/v1/models" : provider === "anthropic" ? "https://api.anthropic.com/v1/models?limit=1000" : provider === "perplexity_api" ? "https://api.perplexity.ai/v1/models" : "https://generativelanguage.googleapis.com/v1beta/models?pageSize=1000";
       const res = await fetch(url, { headers: providerHeaders(provider, key), redirect: "manual", signal: AbortSignal.timeout(20000) });
       if (!res.ok) {
         // Surface the provider's own reason; it names the actual problem (key, billing, parameters).

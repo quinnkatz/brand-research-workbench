@@ -28,13 +28,30 @@ export function mentioned(text: string, aliases: string[]) {
 export function citationUrls(run: Run) {
   return new Set((run.normalized?.sources || []).filter(s => s.role === "cited").map(s => s.url));
 }
+/**
+ * Wilson score interval: the honest range around an observed rate at this sample size.
+ * A rate without its interval invites comparisons the data cannot support, so every
+ * reported rate carries one, and overlapping intervals must never be ranked.
+ */
+export function wilson(successes: number, total: number, z = 1.96) {
+  if (!total) return null;
+  const p = successes / total, denominator = 1 + z * z / total;
+  const centre = (p + z * z / (2 * total)) / denominator;
+  const spread = z * Math.sqrt(p * (1 - p) / total + z * z / (4 * total * total)) / denominator;
+  return { low: Math.max(0, (centre - spread) * 100), high: Math.min(100, (centre + spread) * 100) };
+}
+
+/** True when two rates cannot be ordered at this sample size. */
+export const overlaps = (a: { low: number; high: number } | null, b: { low: number; high: number } | null) =>
+  !a || !b ? true : a.low <= b.high && b.low <= a.high;
+
 export function measure(study: Study, runs: Run[], records: ResearchRecord[]) {
   const good = runs.filter(eligible), profile = profileOf(study);
   const entities = [{ name: study.brand, aliases: profile.aliases }, ...profile.competitors];
   const brands = entities.map(entity => {
     const matches = good.filter(r => mentioned(answerOf(r), [entity.name, ...entity.aliases]));
     return { name: entity.name, own: entity.name === study.brand, runIds: matches.map(r => r.id), mentions: matches.length, denominator: good.length,
-      rate: good.length ? matches.length / good.length * 100 : null, prompts: new Set(matches.map(r => r.prompt)).size };
+      rate: good.length ? matches.length / good.length * 100 : null, interval: wilson(matches.length, good.length), prompts: new Set(matches.map(r => r.prompt)).size };
   });
   const totalMentions = brands.reduce((n, b) => n + b.mentions, 0);
   const domainMap = new Map<string, { domain: string; urls: Set<string>; runIds: Set<string>; citedIds: Set<string>; manualIds: Set<string>; roles: Set<string> }>();

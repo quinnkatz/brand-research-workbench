@@ -72,3 +72,15 @@ test('Starter questions read naturally for short and long audience descriptions'
   assert.equal(short[0], 'What are the best over-the-counter hearing aids for busy parents?');
   assert.equal(short[3], 'Which over-the-counter hearing aids would you recommend for busy parents, and why?');
 });
+test('Rates carry a Wilson interval, and overlapping rates are never rankable', async () => {
+  const { wilson, overlaps } = await import('../lib/analytics.ts');
+  assert.equal(wilson(0, 0), null, 'no sample, no interval');
+  const one = wilson(1, 1);                       // n=1 says almost nothing
+  assert.ok(one.high - one.low > 70, `n=1 interval should be very wide, got ${one.low}-${one.high}`);
+  const twenty = wilson(10, 20), hundred = wilson(50, 100);
+  assert.ok(hundred.high - hundred.low < twenty.high - twenty.low, 'more runs, tighter interval');
+  for (const [s, n] of [[0, 20], [20, 20]]) { const i = wilson(s, n); assert.ok(i.low >= 0 && i.high <= 100, 'stays inside 0-100'); }
+  assert.ok(overlaps(wilson(11, 20), wilson(9, 20)), '55% vs 45% at n=20 cannot be ranked');
+  assert.equal(overlaps(wilson(95, 100), wilson(5, 100)), false, 'far apart at n=100 can be ranked');
+  assert.equal(overlaps(null, wilson(5, 10)), true, 'an unknown rate is never rankable');
+});
