@@ -59,18 +59,23 @@ export function measure(study: Study, runs: Run[], records: ResearchRecord[]) {
 }
 export function starterQuestions(brand: string, profile: BrandProfile) {
   const category = profile.category.trim() || "products in this category";
-  const audience = profile.audience.trim() || "someone buying for the first time";
+  // The audience field is free text ("Their situation, needs…"). Short phrases read naturally inline;
+  // longer descriptions go after the question as buyer context, the way people actually type into assistants.
+  const audience = (profile.audience.trim() || "someone buying for the first time").replace(/[\s.!?;:,]+$/, "");
+  const inline = audience.split(/\s+/).length <= 8;
+  const forAudience = (question: string) => inline ? `${question} for ${audience}` : question;
+  const context = inline ? "" : ` I'm buying for: ${audience}.`;
   const competitors = profile.competitors.map(c => c.name);
   return [
-    { prompt: `What are the best ${category} for ${audience}?`, intent: "discovery" },
+    { prompt: `${forAudience(`What are the best ${category}`)}?${context}`, intent: "discovery" },
     { prompt: `What should I look for when choosing ${category}?`, intent: "discovery" },
     { prompt: `Which ${category} offer good value, and what are the tradeoffs?`, intent: "purchase" },
-    { prompt: `Which ${category} would you recommend for ${audience}, and why?`, intent: "purchase" },
+    { prompt: `${forAudience(`Which ${category} would you recommend`)}, and why?${context}`, intent: "purchase" },
     { prompt: `What is ${brand} known for?`, intent: "verification" },
     { prompt: `Who is ${brand} best suited for, and who might prefer something else?`, intent: "comparison" },
     { prompt: `What are the most common criticisms of ${brand}?`, intent: "verification" },
     { prompt: `What should I verify before buying from ${brand}?`, intent: "purchase" },
-    ...(competitors[0] ? [{ prompt: `How does ${brand} compare with ${competitors[0]} for ${audience}?`, intent: "comparison" }] : []),
+    ...(competitors[0] ? [{ prompt: `${forAudience(`How does ${brand} compare with ${competitors[0]}`)}?${context}`, intent: "comparison" }] : []),
     { prompt: `What alternatives to ${brand} should I consider?`, intent: "comparison" },
     { prompt: `What are ${brand}'s return and warranty policies?`, intent: "support" },
   ].map(q => ({ ...q, origin: "template", notes: "Suggested research scenario. Review the wording; this is not observed search demand.", tags: [] }));

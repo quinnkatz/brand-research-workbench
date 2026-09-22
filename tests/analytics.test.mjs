@@ -60,3 +60,15 @@ test('Recorded consumer personalization prevents a false matched comparison',asy
  const {createComparison}=await import('../lib/comparisons.ts'),c=createComparison(['Aster'],{from:'2026-08-01',to:'2026-08-31'},{from:'2026-09-01',to:'2026-09-30'});
  const a={...fixture('a','Aster','complete','consumer'),created_at:'2026-08-10T00:00:00Z',settings:{memory:'off'}},b={...fixture('b','Fern','complete','consumer'),created_at:'2026-09-10T00:00:00Z',settings:{memory:'on'}};c.add(a);c.add(b);assert.equal(c.result().denominator,0);
 });
+test('Starter questions read naturally for short and long audience descriptions', async () => {
+  const { starterQuestions } = await import('../lib/analytics.ts');
+  const { emptyProfile } = await import('../lib/research.ts');
+  const base = { ...emptyProfile(), category: 'over-the-counter hearing aids', competitors: [{ name: 'Lexie' }] };
+  const long = starterQuestions('Audien', { ...base, audience: 'Adults with mild to moderate hearing loss who find prescription hearing aids too expensive or hard to get.' }).map(q => q.prompt);
+  assert.equal(long[0], "What are the best over-the-counter hearing aids? I'm buying for: Adults with mild to moderate hearing loss who find prescription hearing aids too expensive or hard to get.");
+  assert.ok(long.some(p => p.startsWith('How does Audien compare with Lexie? I\'m buying for:')));
+  for (const p of long) { assert.ok(!/[.,;:]\?/.test(p), p); assert.ok(!p.includes('..'), p); }
+  const short = starterQuestions('Audien', { ...base, audience: 'busy parents.' }).map(q => q.prompt);
+  assert.equal(short[0], 'What are the best over-the-counter hearing aids for busy parents?');
+  assert.equal(short[3], 'Which over-the-counter hearing aids would you recommend for busy parents, and why?');
+});

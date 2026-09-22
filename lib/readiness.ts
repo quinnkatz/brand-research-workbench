@@ -1,9 +1,11 @@
 import { AppError, boundedText, hash } from "./server";
+// www.example.com and example.com are the same site: redirects between them are routine and allowed.
+export const sameSite=(a:string,b:string)=>a.toLowerCase().replace(/^www\./,"")===b.toLowerCase().replace(/^www\./,"");
 export function publicAuditUrl(value:string,host?:string){
   let url:URL;try{url=new URL(value);}catch{throw new AppError("Enter a valid public HTTPS page.");}
   const name=url.hostname.toLowerCase();
   if(url.protocol!=="https:"||url.username||url.password||url.port&&url.port!=="443"||!name.includes(".")||name.length>253||!/^[a-z0-9.-]+$/.test(name)||/(^|\.)(localhost|local|internal|test|invalid|example|onion)$/.test(name)||/^\d+(\.\d+)*$/.test(name))throw new AppError("Audits accept public HTTPS domains only.");
-  if(host&&name!==host)throw new AppError("Choose a page on the brand website’s exact hostname.");url.hash="";return url;
+  if(host&&!sameSite(name,host))throw new AppError("Choose a page on the brand website’s exact hostname.");url.hash="";return url;
 }
 function publicIp(value:string){
   if(value.includes(":"))return /^2[0-9a-f]{3}:/i.test(value)&&!/^2001:(db8|0|10|20)(:|$)/i.test(value)&&!/^2002:/i.test(value);
@@ -45,6 +47,13 @@ export function robotsAllowed(text:string,path:string,agent="brandresearchaudit"
   const exact=groups.filter(g=>g.agents.some(a=>a!=="*"&&agent.includes(a)));const matched=exact.length?exact:groups.filter(g=>g.agents.includes("*"));
   let best=-1,allow=true;for(const rule of matched.flatMap(g=>g.rules)){const escaped=rule.path.replace(/[.+?^{}()|[\]\\]/g,"\\$&").replaceAll("*",".*");if(new RegExp(`^${escaped}`).test(path)){const length=rule.path.replaceAll("*","").length;if(length>best||length===best&&rule.allow){best=length;allow=rule.allow;}}}return allow;
 }
+// HTMLRewriter hands back raw text chunks, so character references (&amp; &rsquo; &#8217;) arrive encoded.
+const NAMED_ENTITIES:Record<string,string>={amp:"&",lt:"<",gt:">",quot:"\"",apos:"'",nbsp:" ",ndash:"–",mdash:"—",lsquo:"‘",rsquo:"’",ldquo:"“",rdquo:"”",hellip:"…",trade:"™",reg:"®",copy:"©",middot:"·",bull:"•",laquo:"«",raquo:"»",deg:"°",times:"×",eacute:"é",egrave:"è",aacute:"á",iacute:"í",oacute:"ó",uacute:"ú",ntilde:"ñ",uuml:"ü",ouml:"ö",auml:"ä",ccedil:"ç"};
+export const decodeEntities=(text:string)=>text.replace(/&(#x[0-9a-f]{1,6}|#[0-9]{1,7}|[a-z]{2,8});/gi,(match,code:string)=>{
+  if(code[0]==="#"){const n=code[1]==="x"||code[1]==="X"?parseInt(code.slice(2),16):parseInt(code.slice(1),10);return n>0&&n<=0x10ffff&&!(n>=0xd800&&n<=0xdfff)?String.fromCodePoint(n):match;}
+  return NAMED_ENTITIES[code]??match;
+});
+const readable=(text:string)=>decodeEntities(text).replace(/\s+/g," ").trim();
 export async function inspectHtml(html:string,url:string){
   const result={title:"",description:"",canonical:"",robots:"",headings:[] as {level:string;text:string}[],body:"",schemas:[] as string[],links:[] as string[],lang:""};
   // Extract structured data before removing scripts; removed descendants still receive
@@ -61,7 +70,7 @@ export async function inspectHtml(html:string,url:string){
     .on("body",{text(t){if(result.body.length<150000)result.body+=t.text;}})
     .on("a[href]",{element(e){try{const u=new URL(e.getAttribute("href")||"",url);if(u.protocol==="https:"&&result.links.length<300)result.links.push(u.href);}catch{}}});
   await rewriter.transform(new Response(clean)).text();
-  return {...result,title:result.title.trim(),body:result.body.replace(/\s+/g," ").trim(),headings:result.headings.map(h=>({...h,text:h.text.trim()})),schemas:result.schemas.map(raw=>{try{return {valid:true,value:JSON.parse(raw),raw};}catch{return {valid:false,value:null,raw};}})};
+  return {...result,title:readable(result.title),description:readable(result.description),body:readable(result.body),headings:result.headings.map(h=>({...h,text:readable(h.text)})),schemas:result.schemas.map(raw=>{try{return {valid:true,value:JSON.parse(raw),raw};}catch{return {valid:false,value:null,raw};}})};
 }
 export async function auditPage(value:string,brandWebsite:string){
   const root=publicAuditUrl(brandWebsite),url=publicAuditUrl(value,root.hostname),capturedAt=new Date().toISOString();
