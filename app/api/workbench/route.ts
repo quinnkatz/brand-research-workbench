@@ -154,7 +154,7 @@ export async function POST(req: Request) {
         return reply({ id }, 201);
       }
       const key = body.connectionId ? await savedKey(uid,base.studyId,v.provider,idSchema.parse(body.connectionId),id) : z.string().trim().min(10).max(512).parse(body.key); const request = makeRequest(v.provider, base.model, base.prompt, v.search, v.maxTokens);
-      const settings = { maxOutputTokens: v.maxTokens, searchMode: v.search, notes: base.notes, systemPrompt: null, userLocation: null, domainFilters: null, ...(v.provider === "anthropic" && v.search === "auto" ? { maxSearches: 3, toolVersion: "web_search_20260318" } : {}) };
+      const settings = { maxOutputTokens: v.maxTokens, searchMode: v.search, notes: base.notes, systemPrompt: null, userLocation: null, domainFilters: null, ...(v.provider === "anthropic" && v.search === "auto" ? { maxSearches: 3, toolVersion: "web_search_20260318", allowedCallers: ["direct"] } : {}) };
       await db().prepare("INSERT INTO runs (id, owner_id, study_id, provider, environment, model, prompt, status, search, settings, created_at) VALUES (?, ?, ?, ?, 'api', ?, ?, 'running', ?, ?, ?)").bind(id, uid, base.studyId, v.provider, base.model, base.prompt, v.search, JSON.stringify(settings), now).run();
       let responseText: string | null = null; let httpStatus: number | null = null;
       try {

@@ -30,9 +30,22 @@ test('Large native events are preserved in original and bounded in index', () =>
 test('Perplexity keeps citations at block scope and distinguishes search results',()=>{
  const raw={id:'synthetic',model:'sonar-pro',choices:[{finish_reason:'stop',message:{content:'Aster has a removable filter [1].'}}],citations:['https://brand.test/care'],search_results:[{url:'https://editor.test/review',title:'Review'}],usage:{num_search_queries:2}};const before=JSON.stringify(raw),r=normalize('perplexity_api',raw);
  assert.equal(r.completion,'complete');assert.equal(r.citations[0].native.scope,'answer_block');assert.ok(r.sources.some(s=>s.role==='provider_disclosed_search_result'));assert.equal(r.rejected_sources,null);assert.equal(JSON.stringify(raw),before);
- const req=makeRequest('perplexity_api','sonar-pro','Exact?','off',1000);assert.equal(req.disable_search,true);assert.equal(req.messages[0].content,'Exact?');assert.equal(req.enable_search_classifier,undefined);assert.equal(endpoints.perplexity_api,'https://api.perplexity.ai/v1/sonar');
+ assert.equal(endpoints.perplexity_api,'https://api.perplexity.ai/v1/agent');
+ const off=makeRequest('perplexity_api','sonar-pro','Exact?','off',1000);assert.equal(off.model,'perplexity/sonar-pro');assert.equal(off.input,'Exact?');assert.equal(off.max_output_tokens,1000);assert.equal(off.tools,undefined);
+ const on=makeRequest('perplexity_api','perplexity/sonar','Exact?','auto',1000);assert.equal(on.model,'perplexity/sonar');assert.deepEqual(on.tools,[{type:'web_search'}]);
+ assert.throws(()=>makeRequest('perplexity_api','openai/gpt-5','Exact?','auto',1000),/Perplexity model/);
  assert.equal(normalize('perplexity_api',{choices:[{finish_reason:'length',message:{content:'Partial'}}]}).completion,'partial');
 });
+test('Perplexity Agent API: cited passages, disclosed search results and unknown items preserved',()=>{
+ const raw={id:'synthetic',object:'response',status:'completed',model:'perplexity/sonar-pro',output:[{type:'search_results',results:[{id:1,url:'https://editor.test/review',title:'Review',snippet:'…',source:'web'}]},{type:'message',role:'assistant',status:'completed',content:[{type:'output_text',text:'Aster has a removable filter.',annotations:[{type:'url_citation',start_index:0,end_index:28,url:'https://brand.test/care',title:'Care'}]}]},{type:'new_future_item',x:1}],usage:{input_tokens:10,output_tokens:5,cost:{currency:'USD',total_cost:0.001}}};
+ const before=JSON.stringify(raw),r=normalize('perplexity_api',raw);
+ assert.equal(r.completion,'complete');assert.equal(r.native_status,'completed');assert.equal(r.segments[0].text,'Aster has a removable filter.');
+ assert.equal(r.citations[0].native.url,'https://brand.test/care');assert.equal(r.citations[0].segment_index,0);
+ assert.ok(r.sources.some(s=>s.role==='provider_disclosed_search_result'&&s.url==='https://editor.test/review'));assert.equal(r.search_observation,'search_results_disclosed');
+ assert.deepEqual(r.unparsed_top_level_events.map(e=>e.type),['new_future_item']);assert.equal(r.rejected_sources,null);assert.equal(JSON.stringify(raw),before);
+ assert.equal(normalize('perplexity_api',{status:'in_progress',output:[]}).completion,'partial');
+});
+test('Anthropic web search uses direct calls so every Claude model accepts it',()=>{const t=makeRequest('anthropic','claude-haiku-4-5','q','auto',1000).tools[0];assert.equal(t.type,'web_search_20260318');assert.deepEqual(t.allowed_callers,['direct']);assert.equal(makeRequest('anthropic','m','q','off',1000).tools,undefined);});
 test('xAI preserves its own provider identity and full native response paths',()=>{
  const r=normalize('xai',{status:'completed',output:[{type:'message',content:[{type:'output_text',text:'Aster',annotations:[{type:'url_citation',url:'https://brand.test',start_index:0,end_index:5}]}]}]});assert.equal(r.provider,'xai');assert.equal(r.completion,'complete');assert.equal(r.sources[0].url,'https://brand.test');assert.equal(r.private_ranking_reasons,null);assert.equal(makeRequest('xai','account-model','Exact?','off',1000).tools,undefined);assert.equal(makeRequest('xai','account-model','Exact?','auto',1000).tools[0].type,'web_search');
 });

@@ -51,7 +51,7 @@ node --experimental-strip-types --test tests/*.test.mjs
 
 Tests run with isolated D1/R2 databases, synthetic dispatcher identities and mocked provider/queue/email transports. A 522-observation fixture checks full-study search, metrics, comparison and export beyond the initial page. No authentication bypass is installed and no paid requests are made.
 
-Provider contracts: [OpenAI](https://developers.openai.com/api/docs/guides/tools-web-search), [Anthropic](https://platform.claude.com/docs/en/agents-and-tools/tool-use/web-search-tool), [Gemini](https://ai.google.dev/gemini-api/docs/interactions-overview), [Perplexity](https://docs.perplexity.ai/api-reference/sonar-post), [xAI](https://docs.x.ai/developers/tools/web-search), [QStash](https://upstash.com/docs/qstash/api-reference/messages/publish-a-message).
+Provider contracts: [OpenAI](https://developers.openai.com/api/docs/guides/tools-web-search), [Anthropic](https://platform.claude.com/docs/en/agents-and-tools/tool-use/web-search-tool), [Gemini](https://ai.google.dev/gemini-api/docs/interactions-overview), [Perplexity Agent API](https://docs.perplexity.ai/api-reference/agent-post), [xAI](https://docs.x.ai/developers/tools/web-search), [QStash](https://upstash.com/docs/qstash/api-reference/messages/publish-a-message).
 
 ## Search, comparisons and delivery
 
