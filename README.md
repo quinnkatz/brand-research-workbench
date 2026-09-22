@@ -22,7 +22,7 @@ A client research application for investigating how AI describes brands. It comb
 
 ## Access, secrets and execution
 
-The hosted site currently has an owner-private outer gate. App-level identity comes only from trusted Sites SIWC headers. Each study has its own owner/editor/viewer permissions; email-bound invitations grant access to that study, not to the site's outer gate. An editor may use a connection authorized by the owner but cannot retrieve its secret.
+Hosting and sign-in: see [docs/SELF_HOSTING.md](docs/SELF_HOSTING.md). In production, identity comes only from a verified Cloudflare Access token (email one-time code); locally a stand-in user is signed in. Each study has its own owner/editor/viewer permissions; email-bound invitations grant access to that study, not to the site's outer gate. An editor may use a connection authorized by the owner but cannot retrieve its secret.
 
 Saved credentials use AES-GCM with a secret `VAULT_MASTER_KEY` and owner/connection/provider-bound authenticated data. The production master key is configured separately from source. Keys can also remain in tab memory. No provider credentials are sent to the delivery queue. Optional email requests carry only their configured message content and recipient addresses to Resend.
 
@@ -42,7 +42,7 @@ See [BUILD_STATUS.md](BUILD_STATUS.md) for verification, limits and activation r
 
 ## Validation
 
-After the configured Sites production build:
+After `pnpm build`:
 
 ```sh
 node node_modules/typescript/bin/tsc --noEmit

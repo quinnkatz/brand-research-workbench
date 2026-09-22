@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { getChatGPTUser } from "@/app/chatgpt-auth";
+import { getUser } from "@/app/auth";
 import { AppError, audit, db, failure, hash, idSchema, jsonBody, owner, ownStudy, reply } from "@/lib/server";
 import { connectionFor, openSecret, seal, vaultReady } from "@/lib/vault";
 export const dynamic = "force-dynamic";
@@ -61,7 +61,7 @@ export async function POST(req: Request) {
       return reply({ id });
     }
     if (body.action === "accept_invite") {
-      const token = z.string().regex(/^[a-f0-9]{64}$/).parse(body.token), user = (await getChatGPTUser())!;
+      const token = z.string().regex(/^[a-f0-9]{64}$/).parse(body.token), user = (await getUser())!;
       const invite = await db().prepare("SELECT * FROM study_invites WHERE token_hash = ? AND expires_at > ? AND revoked_at IS NULL AND accepted_at IS NULL").bind(await hash(token), now).first<any>();
       if (!invite) throw new AppError("This invitation is expired, used, or withdrawn.", 404);
       if (invite.email.toLowerCase() !== user.email.toLowerCase()) throw new AppError("Sign in with the email address named on this invitation.", 403);

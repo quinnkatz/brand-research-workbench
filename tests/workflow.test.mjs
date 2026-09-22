@@ -9,7 +9,7 @@ const require = createRequire(import.meta.url);
 const { Miniflare } = createRequire(require.resolve('wrangler/package.json'))('miniflare');
 
 test('Client research workflow persists exact evidence, rejects false anchors, and isolates accounts', async () => {
-  const mf = new Miniflare({ modules: ['index.js', ...readdirSync('dist/server', {recursive:true}).filter(p => /\.m?js$/.test(p) && p !== 'index.js')].map(p => ({type:'ESModule',path:resolve('dist/server',p)})), modulesRoot: resolve('dist/server'), compatibilityDate: '2026-05-15', compatibilityFlags: ['nodejs_compat'], d1Databases: ['DB'], r2Buckets: ['BUCKET'] });
+  const mf = new Miniflare({ modules: ['index.js', ...readdirSync('dist/server', {recursive:true}).filter(p => /\.m?js$/.test(p) && p !== 'index.js')].map(p => ({type:'ESModule',path:resolve('dist/server',p)})), modulesRoot: resolve('dist/server'), compatibilityDate: '2026-05-15', compatibilityFlags: ['nodejs_compat'], bindings: { AUTH_MODE: 'sites' }, d1Databases: ['DB'], r2Buckets: ['BUCKET'] });
   try {
     const db = await mf.getD1Database('DB');
     for (const file of readdirSync('drizzle').filter(f => f.endsWith('.sql')).sort()) {

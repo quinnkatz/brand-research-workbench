@@ -6,7 +6,7 @@ import test from 'node:test';
 const require=createRequire(import.meta.url),{Miniflare}=createRequire(require.resolve('wrangler/package.json'))('miniflare');
 test('Coverage → preserved source → passage review → action → curated report is isolated, durable and complete',async()=>{
  let sourceText='Aster One must be hand-washed. The lid is not dishwasher safe.',sourceMode='ok';const outgoing=[];
- const mf=new Miniflare({modules:['index.js',...readdirSync('dist/server',{recursive:true}).filter(p=>/\.m?js$/.test(p)&&p!=='index.js')].map(p=>({type:'ESModule',path:resolve('dist/server',p)})),modulesRoot:resolve('dist/server'),compatibilityDate:'2026-05-15',compatibilityFlags:['nodejs_compat'],d1Databases:['DB'],r2Buckets:['BUCKET'],outboundService:async req=>{
+ const mf=new Miniflare({modules:['index.js',...readdirSync('dist/server',{recursive:true}).filter(p=>/\.m?js$/.test(p)&&p!=='index.js')].map(p=>({type:'ESModule',path:resolve('dist/server',p)})),modulesRoot:resolve('dist/server'),compatibilityDate:'2026-05-15',compatibilityFlags:['nodejs_compat'], bindings: { AUTH_MODE: 'sites' },d1Databases:['DB'],r2Buckets:['BUCKET'],outboundService:async req=>{
   const u=new URL(req.url);outgoing.push(u.href);assert.equal(req.headers.has('authorization'),false);assert.equal(req.headers.has('cookie'),false);
   if(u.hostname==='cloudflare-dns.com')return Response.json({Answer:[{type:u.searchParams.get('type')==='A'?1:28,data:u.searchParams.get('type')==='A'?(u.searchParams.get('name')==='private-source.com'?'127.0.0.1':'93.184.216.34'):'2606:4700:4700::1111'}]});
   if(u.pathname==='/robots.txt')return new Response(sourceMode==='robots'?'User-agent: *\nDisallow: /':'User-agent: *\nAllow: /',{headers:{'content-type':'text/plain'}});

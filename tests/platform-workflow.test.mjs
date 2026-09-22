@@ -7,7 +7,7 @@ const require=createRequire(import.meta.url),{Miniflare}=createRequire(require.r
 
 test('Client roles, encrypted connections, quotas, callback replay, challenges and evidence tools form one isolated workflow',async()=>{
   const messages=[],schedules=[],emails=[];let emailFailure=false;let providerCalls=0,reachable=true,providerFailure=false,query='Aster is compact.',queueCalls=0;
-  const mf=new Miniflare({modules:['index.js',...readdirSync('dist/server',{recursive:true}).filter(p=>/\.m?js$/.test(p)&&p!=='index.js')].map(p=>({type:'ESModule',path:resolve('dist/server',p)})),modulesRoot:resolve('dist/server'),compatibilityDate:'2026-05-15',compatibilityFlags:['nodejs_compat'],d1Databases:['DB'],r2Buckets:['BUCKET'],bindings:{VAULT_MASTER_KEY:Buffer.alloc(32,7).toString('base64')},outboundService:async req=>{
+  const mf=new Miniflare({modules:['index.js',...readdirSync('dist/server',{recursive:true}).filter(p=>/\.m?js$/.test(p)&&p!=='index.js')].map(p=>({type:'ESModule',path:resolve('dist/server',p)})),modulesRoot:resolve('dist/server'),compatibilityDate:'2026-05-15',compatibilityFlags:['nodejs_compat'],d1Databases:['DB'],r2Buckets:['BUCKET'],bindings:{AUTH_MODE:'sites',VAULT_MASTER_KEY:Buffer.alloc(32,7).toString('base64')},outboundService:async req=>{
     const url=new URL(req.url);
     if(url.hostname==='workbench.test'&&url.pathname==='/api/dispatch')return reachable?Response.json({service:'brand-research-dispatch-v1'}):new Response('Sign in',{status:302,headers:{location:'/signin'}});
     if(url.hostname==='qstash-eu-central-1.upstash.io'){

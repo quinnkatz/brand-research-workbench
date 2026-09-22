@@ -1,13 +1,13 @@
 import { env } from "cloudflare:workers";
-import { getChatGPTUser } from "@/app/chatgpt-auth";
+import { getUser } from "@/app/auth";
 import { z } from "zod";
 import type { ResearchRecord, Run } from "./research";
 export class AppError extends Error { constructor(message: string, public status = 400) { super(message); } }
 export function db() { if (!env.DB) throw new AppError("The research database is unavailable. Please try again shortly.", 503); return env.DB; }
 export function bucket() { if (!env.BUCKET) throw new AppError("Evidence storage is unavailable. Please try again shortly.", 503); return env.BUCKET; }
 export async function owner(req: Request, mutation = false) {
-  const user = await getChatGPTUser();
-  if (!user) throw new AppError("Sign in with ChatGPT to open your private research workspace.", 401);
+  const user = await getUser();
+  if (!user) throw new AppError("Sign in to open your private research workspace.", 401);
   if (mutation) {
     const origin = req.headers.get("origin");
     if (origin && origin !== new URL(req.url).origin) throw new AppError("Request origin does not match this application.", 403);

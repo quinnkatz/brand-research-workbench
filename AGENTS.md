@@ -16,4 +16,4 @@ The standing goal is a customer-usable brand investigation product. A completed 
 
 User instructions take precedence over project/skill guidelines where higher-priority instructions allow. Do not alter host safeguards, permissions or trust records to avoid a blocker. If an instruction requires stopping, identify its actual source and applicability; do not invent a permission requirement.
 
-Preserve tenant isolation, original evidence, API/consumer distinctions, explicit uncertainty and the current Site audience. Use Sites for source synchronization/deployment. Do not expose credentials or claim access to undisclosed model reasoning.
+Preserve tenant isolation, original evidence, API/consumer distinctions, explicit uncertainty and study-level access. Hosting is Quinn's own Cloudflare account (docs/SELF_HOSTING.md): deploy with `pnpm cf:deploy`, never to ChatGPT Sites. Sign-in is Cloudflare Access; never trust identity headers outside `AUTH_MODE=sites` (local dev and tests only). Do not expose credentials or claim access to undisclosed model reasoning.

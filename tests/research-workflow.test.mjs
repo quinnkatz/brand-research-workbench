@@ -8,7 +8,7 @@ const require=createRequire(import.meta.url);
 const {Miniflare}=createRequire(require.resolve('wrangler/package.json'))('miniflare');
 test('Brand setup, durable collection, analysis, record history and revocable reports stay isolated', async()=>{
   let calls=0, analysisInput;
-  const mf=new Miniflare({modules:['index.js',...readdirSync('dist/server',{recursive:true}).filter(p=>/\.m?js$/.test(p)&&p!=='index.js')].map(p=>({type:'ESModule',path:resolve('dist/server',p)})), modulesRoot:resolve('dist/server'),compatibilityDate:'2026-05-15',compatibilityFlags:['nodejs_compat'],d1Databases:['DB'],r2Buckets:['BUCKET'],outboundService:async request=>{
+  const mf=new Miniflare({modules:['index.js',...readdirSync('dist/server',{recursive:true}).filter(p=>/\.m?js$/.test(p)&&p!=='index.js')].map(p=>({type:'ESModule',path:resolve('dist/server',p)})), modulesRoot:resolve('dist/server'),compatibilityDate:'2026-05-15',compatibilityFlags:['nodejs_compat'], bindings: { AUTH_MODE: 'sites' },d1Databases:['DB'],r2Buckets:['BUCKET'],outboundService:async request=>{
     calls++; assert.equal(new URL(request.url).hostname,'api.openai.com'); const body=await request.json();
     if(body.model==='synthetic-redirect') return new Response('Moved', {status:302,headers:{location:'https://unrelated.example/credential-trap'}});
     if(body.model==='synthetic-invalid') return new Response('<html>Provider error</html>', {status:502});

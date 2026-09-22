@@ -1,0 +1,8 @@
+{
+  "workerName": "brand-research-workbench",
+  "d1DatabaseName": "brand-research-workbench-db",
+  "d1DatabaseId": "",
+  "r2BucketName": "brand-research-workbench-evidence",
+  "accessTeamDomain": "",
+  "accessAud": ""
+}

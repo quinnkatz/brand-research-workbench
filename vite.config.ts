@@ -1,3 +1,4 @@
+import { existsSync, readFileSync } from "node:fs";
 import vinext from "vinext";
 import { defineConfig } from "vite";
 import hostingConfig from "./.openai/hosting.json";
@@ -9,6 +10,26 @@ const SITE_CREATOR_PLACEHOLDER_DATABASE_ID =
 
 const { d1, r2 } = hostingConfig;
 
+// `DEPLOY=production pnpm build` targets the owner's own Cloudflare account using
+// deploy/cloudflare.json. Any other build is local: ChatGPT-style mock sign-in and
+// a throwaway local database. scripts/deploy.mjs refuses to ship a local build.
+const production = process.env.DEPLOY === "production";
+const deployConfig = production
+  ? JSON.parse(readFileSync(new URL("./deploy/cloudflare.json", import.meta.url), "utf8"))
+  : null;
+
+function localVars(): Record<string, string> {
+  const vars: Record<string, string> = { AUTH_MODE: "sites" };
+  // Optional gitignored .dev.vars (KEY=value lines), e.g. a local VAULT_MASTER_KEY.
+  if (existsSync(".dev.vars")) {
+    for (const line of readFileSync(".dev.vars", "utf8").split("\n")) {
+      const match = line.match(/^\s*([A-Z0-9_]+)\s*=\s*"?([^"]*)"?\s*$/);
+      if (match) vars[match[1]] = match[2];
+    }
+  }
+  return vars;
+}
+
 // macOS Seatbelt blocks FSEvents, so Codex previews need polling for HMR.
 const isCodexSeatbeltSandbox = process.env.CODEX_SANDBOX === "seatbelt";
 const managedLinux = readExecutionProfile() === "managed-linux";
@@ -16,12 +37,20 @@ const managedLinux = readExecutionProfile() === "managed-linux";
 const localBindingConfig = {
   main: "vinext/server/fetch-handler",
   compatibility_flags: ["nodejs_compat"],
+  ...(deployConfig ? { name: deployConfig.workerName } : {}),
+  vars: deployConfig
+    ? {
+        AUTH_MODE: "cloudflare-access",
+        ACCESS_TEAM_DOMAIN: deployConfig.accessTeamDomain,
+        ACCESS_AUD: deployConfig.accessAud,
+      }
+    : localVars(),
   d1_databases: d1
     ? [
         {
           binding: d1,
-          database_name: "site-creator-d1",
-          database_id: SITE_CREATOR_PLACEHOLDER_DATABASE_ID,
+          database_name: deployConfig?.d1DatabaseName ?? "site-creator-d1",
+          database_id: deployConfig?.d1DatabaseId ?? SITE_CREATOR_PLACEHOLDER_DATABASE_ID,
         },
       ]
     : [],
@@ -29,7 +58,7 @@ const localBindingConfig = {
     ? [
         {
           binding: r2,
-          bucket_name: "site-creator-r2",
+          bucket_name: deployConfig?.r2BucketName ?? "site-creator-r2",
         },
       ]
     : [],
@@ -57,7 +86,7 @@ export default defineConfig(async () => {
     },
     plugins: [
       vinext(),
-      sites({ mockAuth: !managedLinux }),
+      sites({ mockAuth: !managedLinux && !production }),
       cloudflare({
         viteEnvironment: { name: "rsc", childEnvironments: ["ssr"] },
         inspectorPort: false,

@@ -51,3 +51,6 @@ next-env.d.ts
 # Local Python verification caches
 __pycache__/
 *.pyc
+
+# Local-only Worker vars (e.g. VAULT_MASTER_KEY for local dev)
+.dev.vars

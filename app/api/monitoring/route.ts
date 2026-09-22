@@ -1,4 +1,4 @@
-import { getChatGPTUser } from "@/app/chatgpt-auth";
+import { getUser } from "@/app/auth";
 import { deliverNotification } from "@/lib/notifications";
 import { z } from "zod";
 import { AppError, audit, db, failure, hash, idSchema, jsonBody, ownStudy, owner, reply } from "@/lib/server";
@@ -11,7 +11,7 @@ export async function GET(req:Request){try{
   const rows=await db().prepare("SELECT id,name,config,status,schedule_id,last_tick,created_at,updated_at FROM monitors WHERE study_id=? AND owner_id=? ORDER BY created_at DESC").bind(studyId,study.owner_id).all<any>();
   const tickets=await db().prepare("SELECT t.job_id,t.status,t.message_id,t.error,t.created_at,t.expires_at FROM execution_tickets t JOIN collection_jobs j ON j.id=t.job_id WHERE j.study_id=? AND t.owner_id=? ORDER BY t.created_at DESC LIMIT 200").bind(studyId,study.owner_id).all();
   const notifications=await db().prepare("SELECT id,kind,target_id,status,response,error,first_attempt,last_attempt,created_at FROM notification_outbox WHERE study_id=? AND owner_id=? ORDER BY created_at DESC LIMIT 100").bind(studyId,study.owner_id).all();
-  const recipients=study.access_role==="owner"?[...new Set([(await getChatGPTUser())!.email.toLowerCase(),...(await db().prepare("SELECT email FROM study_members WHERE study_id=?").bind(studyId).all<any>()).results.map(m=>m.email.toLowerCase())])]:[];
+  const recipients=study.access_role==="owner"?[...new Set([(await getUser())!.email.toLowerCase(),...(await db().prepare("SELECT email FROM study_members WHERE study_id=?").bind(studyId).all<any>()).results.map(m=>m.email.toLowerCase())])]:[];
   return reply({notifications:notifications.results,recipients,monitors:rows.results.map(r=>({...r,config:JSON.parse(r.config)})),tickets:tickets.results,canManage:study.access_role==="owner"});
 }catch(e){return failure(e);}}
 export async function POST(req:Request){try{
@@ -23,7 +23,7 @@ export async function POST(req:Request){try{
   if(body.action==="configure_delivery"){
     const v=z.object({id:idSchema,enabled:z.boolean(),connectionId:idSchema.optional(),from:z.string().email().optional(),recipients:z.array(z.string().email()).max(10).default([]),acknowledge:z.literal(true)}).parse(body);
     const monitor=await db().prepare("SELECT id FROM monitors WHERE id=? AND study_id=? AND owner_id=?").bind(v.id,studyId,actor).first();if(!monitor)throw new AppError("Monitor not found.",404);
-    const ownerEmail=(await getChatGPTUser())!.email.toLowerCase(),members=await db().prepare("SELECT email FROM study_members WHERE study_id=?").bind(studyId).all<any>(),allowed=new Set([ownerEmail,...members.results.map(m=>m.email.toLowerCase())]),recipients=[...new Set(v.recipients.map(s=>s.toLowerCase()))];
+    const ownerEmail=(await getUser())!.email.toLowerCase(),members=await db().prepare("SELECT email FROM study_members WHERE study_id=?").bind(studyId).all<any>(),allowed=new Set([ownerEmail,...members.results.map(m=>m.email.toLowerCase())]),recipients=[...new Set(v.recipients.map(s=>s.toLowerCase()))];
     if(v.enabled){if(!v.connectionId||!v.from||!recipients.length)throw new AppError("Choose a delivery connection, verified sender, and at least one recipient.");await connectionFor(actor,v.connectionId,"resend");if(recipients.some(email=>!allowed.has(email)))throw new AppError("Recipients must be the owner or accepted members of this brand workspace.");}
     const delivery={enabled:v.enabled,connectionId:v.connectionId,from:v.from,recipients,ownerEmail,origin};
     await db().batch([db().prepare("UPDATE monitors SET config=json_set(config,'$.delivery',json(?)),updated_at=? WHERE id=?").bind(JSON.stringify(delivery),now,v.id),db().prepare("UPDATE notification_outbox SET status='cancelled',error='Delivery settings changed.' WHERE monitor_id=? AND status IN ('queued','failed','uncertain')").bind(v.id)]);
