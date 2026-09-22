@@ -1,13 +1,14 @@
 import { curateRecords } from "@/lib/curation";
 import { coverageData } from "@/lib/investigation-server";
 import { z } from "zod";
-import { AppError, bucket, db, failure, hash, idSchema, jsonBody, ownStudy, owner, publicRecord, publicRun, reply, urlSchema } from "@/lib/server";
+import { AppError, audit, bucket, db, failure, hash, idSchema, jsonBody, ownStudy, owner, publicRecord, publicRun, reply, urlSchema } from "@/lib/server";
 import { appendRecord, executeJob, profileSchema, providerCall, publicJob, publicStudy } from "@/lib/research-server";
 import { answerOf, type Run } from "@/lib/research";
 import { eligible, validateAnalysis } from "@/lib/analytics";
 import { buildClientReport, reportRecords } from "@/lib/report";
 import { afterCollection } from "@/lib/monitoring";
 import { savedKey } from "@/lib/vault";
+import { MAX_QUERIES, MAX_RESULTS, operatorSearchKey, perplexitySearch } from "@/lib/perplexity-search";
 export const dynamic = "force-dynamic";
 const str = (n: number) => z.string().trim().min(1).max(n);
 const optional = (n: number) => z.string().max(n).default("");
@@ -135,6 +136,38 @@ export async function POST(req: Request) {
       await db().batch([db().prepare("UPDATE collection_jobs SET status = 'needs_attention', error = ?, updated_at = ? WHERE id = ? AND status = 'running'").bind(error, now, id), db().prepare("UPDATE runs SET status = 'failed', error = ?, finished_at = ? WHERE id = ? AND owner_id = ? AND status = 'running'").bind(error, now, job.run_id, uid)]);
       if(job.run_id)await afterCollection(uid,job.run_id);
       return reply({ id });
+    }
+    if (body.action === "web_ranking") {
+      // Ranked web results for a customer question: the baseline the AI answers are compared against.
+      // Stored as its own record kind so it can never be counted as an AI observation.
+      const v = z.object({
+        query: z.union([str(2000), z.array(str(2000)).min(1).max(MAX_QUERIES)]),
+        questionId: idSchema.optional(),
+        connectionId: idSchema.optional(),
+        maxResults: z.number().int().min(1).max(MAX_RESULTS).optional(),
+        contextSize: z.enum(["low", "medium", "high"]).optional(),
+        country: z.string().length(2).optional(),
+        domainFilter: z.array(str(200)).max(20).optional(),
+        languages: z.array(z.string().length(2)).max(20).optional(),
+        recency: z.enum(["hour", "day", "week", "month", "year"]).optional(),
+      }).parse(body);
+      if (v.questionId) {
+        const all = await recordsFor(uid, studyId);
+        if (!all.some(r => r.id === v.questionId && r.kind === "question")) throw new AppError("Choose a saved question from this study.");
+      }
+      const requestId = crypto.randomUUID();
+      // A saved connection is preferred: it is the owner's own key and it counts against the brand's allowance.
+      const key = v.connectionId ? await savedKey(uid, studyId, "perplexity_api", v.connectionId, requestId) : operatorSearchKey();
+      if (!key) throw new AppError("Connect a Perplexity account, or set the PERPLEXITY_API_KEY secret for this deployment.", 503);
+      const search = await perplexitySearch(key, v);
+      const id = await appendRecord(uid, studyId, "web_ranking", {
+        provider: "perplexity_search", queries: search.queries, questionId: v.questionId ?? null,
+        request: search.request, response: search.raw, results: search.results, searchId: search.searchId,
+        retrievedAt: new Date().toISOString(), keySource: v.connectionId ? "connection" : "deployment",
+        limitation: "Ranked web results only. This is not an assistant answer and is never counted as one.",
+      });
+      await audit(studyId, actor, "web_ranking_created", id, { queries: search.queries.length, results: search.results.length });
+      return reply({ id, results: search.results, searchId: search.searchId }, 201);
     }
     if (body.action === "source") {
       const v = z.object({ url: urlSchema, title: optional(300), excerpt: z.string().min(1).max(20000).refine(value => !!value.trim()), capturedAt: z.string().datetime(), notes: optional(4000) }).parse(body);

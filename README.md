@@ -20,6 +20,20 @@ A client research application for investigating how AI describes brands. It comb
 - Consumer observations: ChatGPT, Claude, Gemini, Google AI Mode, AI Overviews, Perplexity, Copilot, Grok and other. The locally installed [Consumer Capture helper](capture-extension/README.md) preserves selected visible text/links; screenshots can be attached in the app. This is deliberate human collection, not autonomous consumer-app querying.
 - Methods are never silently merged. Consumer observations and API experiments remain distinct cohorts. Hidden ranking, complete rejected-source sets, private reasoning and true source influence cannot be reconstructed from ordinary responses.
 
+## Web ranking baseline (Perplexity Search API)
+
+Ranked web results for a customer question, stored beside the assistant answers so a study can
+compare what the open web ranks with what assistants actually cite. Search results are saved as
+`web_ranking` records and are never counted as observations: they contain no assistant answer.
+
+`POST /api/research` with `action: "web_ranking"`, a `studyId`, and `query` (one string, or up to
+five processed independently and merged by URL, keeping the best rank). Optional: `questionId`,
+`maxResults` (1-50, default 10), `contextSize`, `country`, `domainFilter` (max 20, allowlist or
+denylist, not both), `languages`, `recency`. The key comes from the study's saved Perplexity
+connection when `connectionId` is given — which also counts against the brand's request allowance —
+otherwise from the deployment's `PERPLEXITY_API_KEY` secret. Endpoint and parameters follow
+[the Search API reference](https://docs.perplexity.ai/api-reference/search-post).
+
 ## Access, secrets and execution
 
 Hosting and sign-in: see [docs/SELF_HOSTING.md](docs/SELF_HOSTING.md). In production, identity comes only from a verified Cloudflare Access token (email one-time code); locally a stand-in user is signed in. Each study has its own owner/editor/viewer permissions; email-bound invitations grant access to that study, not to the site's outer gate. An editor may use a connection authorized by the owner but cannot retrieve its secret.

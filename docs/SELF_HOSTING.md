@@ -41,6 +41,10 @@ Access is free for up to 50 users.
 - `sites`: trusted `oai-authenticated-user-*` headers. Used by local dev and tests only.
 - anything else: nobody is signed in.
 
+Optional secret: `PERPLEXITY_API_KEY` enables the web ranking baseline without a per-owner
+connection (`wrangler secret put PERPLEXITY_API_KEY`, or a line in the gitignored `.dev.vars` for
+local dev). Create the key at https://console.perplexity.ai. Rotate it there if it is ever exposed.
+
 `scripts/deploy.mjs` refuses to deploy a build that is not in `cloudflare-access` mode.
 Saved provider keys are encrypted with `VAULT_MASTER_KEY`, a Worker secret that lives only in
 Cloudflare. If it is ever rotated or lost, reconnect provider keys in the app.
