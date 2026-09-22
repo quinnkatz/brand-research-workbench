@@ -40,7 +40,7 @@ export async function executeJob(uid: string, jobId: string, key: string) {
   if (job.status !== "queued") return { id: job.run_id, status: job.status, alreadyStarted: true };
   const now = new Date().toISOString(), runId = crypto.randomUUID(), settings = JSON.parse(job.settings);
   const claimed = await db().prepare("UPDATE collection_jobs SET status = 'running', run_id = ?, updated_at = ? WHERE id = ? AND owner_id = ? AND status = 'queued'").bind(runId, now, jobId, uid).run();
-  if (claimed.meta.changes !== 1) throw new AppError("This collection item is already being handled. Refresh its status.", 409);
+  if (claimed.meta.changes !== 1) {const existing=await db().prepare("SELECT run_id,status FROM collection_jobs WHERE id=? AND owner_id=?").bind(jobId,uid).first<any>();return {id:existing?.run_id,status:existing?.status,alreadyStarted:true};}
   let phase = "creating_run";
   let retained: { key: string; digest: string } | null = null;
   try {

@@ -98,3 +98,10 @@ export const drafts = sqliteTable("drafts", {
 export const requestReservations = sqliteTable("request_reservations", {
   id: text("id").primaryKey(), grantId: text("grant_id").notNull(), createdAt: text("created_at").notNull(),
 }, t => [index("reservations_grant").on(t.grantId)]);
+
+export const notificationOutbox = sqliteTable("notification_outbox", {
+  id:text("id").primaryKey(), ownerId:text("owner_id").notNull(), studyId:text("study_id").notNull().references(()=>studies.id),
+  monitorId:text("monitor_id").notNull(), connectionId:text("connection_id").notNull(), kind:text("kind").notNull(), targetId:text("target_id").notNull(),
+  payload:text("payload").notNull(), status:text("status").notNull().default("queued"), response:text("response"), error:text("error"),
+  firstAttempt:text("first_attempt"), lastAttempt:text("last_attempt"), createdAt:text("created_at").notNull(),
+},t=>[index("notifications_study_status").on(t.ownerId,t.studyId,t.status)]);

@@ -7,12 +7,12 @@ A client research application for investigating how AI describes brands. It comb
 1. Set up a brand, audience, market, language, positioning and competitors. Review the starter questions; they are scenarios, not search-demand estimates.
 2. Add dated facts and product/SKU/offer identities. Facts and questions can preserve a particular product version.
 3. Save encrypted provider connections and authorize a request allowance per brand. Plan exact questions across providers and repetitions, import original responses, or capture what an actual consumer app displayed.
-4. Inspect presence, tracked share, source exposure and reviewed recommendation/sentiment labels. Open the underlying answer set, save filters, and load older observations.
-5. Click an answer passage to see its native citations, disclosed search events, supporting reference snapshots and assessments. Copy its exact link or pin it for later.
+4. Inspect presence, tracked share, source exposure and reviewed recommendation/sentiment labels. Open each contributing answer, save filters, and search the complete study. Server-side portrait metrics include older observations. Matched-period comparisons separate changed protocols.
+5. Click an answer passage to see its native citations, disclosed search events, supporting reference snapshots and assessments. Copy its exact link, pin it for later, or challenge a reviewed finding directly from the passage panel.
 6. Review narrative findings, ask an assistant about selected evidence, and draft content briefs. Unsupported exact quotations are rejected; interpretations and proposed actions require human review.
 7. Agree on actions with criteria and follow-up evidence. Inspect public website readiness and import first-party traffic, Search Console and crawler exports.
 8. Create a dated report with reviewed findings, interpretations, actions and source records. Invite editors/viewers, receive client challenges, and preserve the response and edit history.
-9. Configure daily or weekly UTC monitoring through a saved QStash EU connection. Reports and source/mention change alerts appear in the app. No emails, public posts or external outreach are sent.
+9. Configure daily or weekly UTC monitoring through a saved QStash EU connection. Reports and source/mention change alerts appear in the app. Optional Resend batch summaries go only to explicitly selected, accepted workspace members after the owner enables delivery. Provider acceptance, failures, and uncertain outcomes are recorded; no public posting or independent outreach occurs.
 
 ## Collection coverage
 
@@ -24,7 +24,7 @@ A client research application for investigating how AI describes brands. It comb
 
 The hosted site currently has an owner-private outer gate. App-level identity comes only from trusted Sites SIWC headers. Each study has its own owner/editor/viewer permissions; email-bound invitations grant access to that study, not to the site's outer gate. An editor may use a connection authorized by the owner but cannot retrieve its secret.
 
-Saved credentials use AES-GCM with a secret `VAULT_MASTER_KEY` and owner/connection/provider-bound authenticated data. The production master key is configured separately from source. Keys can also remain in tab memory. No provider credentials are sent to the delivery queue.
+Saved credentials use AES-GCM with a secret `VAULT_MASTER_KEY` and owner/connection/provider-bound authenticated data. The production master key is configured separately from source. Keys can also remain in tab memory. No provider credentials are sent to the delivery queue. Optional email requests carry only their configured message content and recipient addresses to Resend.
 
 Request reservations are persistent and atomic. Provider execution is atomically claimed; replayed callbacks or repeated clicks do not repeat started work. Caps count logical requests conservatively, not dollars. Uncertain delivery is visible and can be replaced after review only while the provider request has never started. Interrupted provider requests are not retried automatically.
 
@@ -46,9 +46,21 @@ After the configured Sites production build:
 
 ```sh
 node node_modules/typescript/bin/tsc --noEmit
-node --experimental-strip-types --test tests/providers.test.mjs tests/claims.test.mjs tests/analytics.test.mjs tests/workflow.test.mjs tests/research-workflow.test.mjs tests/platform-workflow.test.mjs
+node --experimental-strip-types --test tests/*.test.mjs
 ```
 
-Tests run with isolated D1/R2 databases, synthetic dispatcher identities and mocked provider/queue transports. No authentication bypass is installed and no paid requests are made.
+Tests run with isolated D1/R2 databases, synthetic dispatcher identities and mocked provider/queue/email transports. A 522-observation fixture checks full-study search, metrics, comparison and export beyond the initial page. No authentication bypass is installed and no paid requests are made.
 
 Provider contracts: [OpenAI](https://developers.openai.com/api/docs/guides/tools-web-search), [Anthropic](https://platform.claude.com/docs/en/agents-and-tools/tool-use/web-search-tool), [Gemini](https://ai.google.dev/gemini-api/docs/interactions-overview), [Perplexity](https://docs.perplexity.ai/api-reference/sonar-post), [xAI](https://docs.x.ai/developers/tools/web-search), [QStash](https://upstash.com/docs/qstash/api-reference/messages/publish-a-message).
+
+## Search, comparisons and delivery
+
+Full-text search uses SQLite FTS5 over question text, original answer text and disclosed URLs; all plain search terms must match by word prefix. Its index is maintained transactionally by insert/update/delete triggers, including legacy-record backfill. Tenant authorization is applied to every search, facet, aggregate and export request. Context filters use the saved question version, not a later edit to a question with the same wording.
+
+The portrait aggregates complete response text on the server in bounded pages, returning short display summaries and exact contributing IDs. The loaded workspace subset still bounds deliberately selected narrative/assistant/report inputs. Cross-period comparison selects one latest eligible observation per exact recorded protocol in each period, including memory, model, question/context version and repetition. Unknown personalization remains unknown; matching does not imply causality or representative consumer sampling.
+
+The default Export downloads a streamed NDJSON archive containing study metadata, all runs, records, record histories and attachment metadata with authenticated original-evidence links. Check its final `completion` record for counts. This is not a transactional snapshot of edits occurring during download. The older JSON API export remains explicitly capped at 500 for compatibility.
+
+Email delivery uses an immutable outbox payload and one idempotency key per monitored batch. Accepted members are rechecked before sending. Provider acceptance is not proof of inbox delivery. Uncertain retries reuse exactly the same payload/key and are blocked after 23 hours, within Resend's documented 24-hour idempotency window. Revoked recipients or changed preferences cancel pending delivery.
+
+Contracts checked for this increment: [D1 FTS5 support](https://developers.cloudflare.com/d1/sql-api/sql-statements/), [Resend batch delivery](https://resend.com/docs/api-reference/emails/send-batch-emails), [Resend idempotency](https://resend.com/docs/dashboard/emails/idempotency-keys).

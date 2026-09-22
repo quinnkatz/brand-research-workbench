@@ -22,6 +22,20 @@
       "when": 1789996143254,
       "tag": "0002_perpetual_ezekiel",
       "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "6",
+      "when": 1790049974213,
+      "tag": "0003_evidence_search",
+      "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "6",
+      "when": 1790050287702,
+      "tag": "0004_notification_outbox",
+      "breakpoints": true
     }
   ]
 }

@@ -1,7 +1,7 @@
 import { answerOf, domainOf, emptyProfile, type BrandProfile, type ResearchRecord, type Run, type Study } from "./research";
 
-export type Scope = { environment: string; provider: string; intent: string; from: string; to: string; query: string };
-export const emptyScope = (): Scope => ({ environment: "consumer", provider: "all", intent: "all", from: "", to: "", query: "" });
+export type Scope = { environment: string; provider: string; intent: string; from: string; to: string; query: string; topic:string; audience:string; market:string; language:string; purpose:string; productId:string };
+export const emptyScope = (): Scope => ({ environment: "consumer", provider: "all", intent: "all", from: "", to: "", query: "", topic:"all",audience:"all",market:"all",language:"all",purpose:"all",productId:"all" });
 export function observedAt(run: Run) { return run.environment === "consumer" && run.settings?.observedAt ? run.settings.observedAt : run.created_at; }
 export function eligible(run: Run) { return ["complete", "manually_recorded"].includes(run.status) && !!answerOf(run).trim(); }
 export function profileOf(study?: Study): BrandProfile { return { ...emptyProfile(), ...study?.profile }; }
@@ -12,8 +12,9 @@ export function scopeRuns(runs: Run[], records: ResearchRecord[], scope: Scope) 
     if (scope.provider !== "all" && r.provider !== scope.provider) return false;
     const day = observedAt(r).slice(0, 10);
     if (scope.from && day < scope.from || scope.to && day > scope.to) return false;
-    const intent = r.settings?.intent || questions.find(q => q.payload.prompt === r.prompt)?.payload.intent;
+    const intent = r.settings?.intent;
     if (scope.intent !== "all" && intent !== scope.intent) return false;
+    for(const key of ["topic","audience","market","language","purpose","productId"] as const){const wanted=scope[key];if(wanted&&wanted!=="all"&&(r.settings?.questionContext?.[key]||(key==="purpose"?"unclassified":""))!==wanted)return false;}
     return !scope.query || `${r.prompt}\n${answerOf(r)}`.toLocaleLowerCase().includes(scope.query.toLocaleLowerCase());
   });
 }
@@ -54,7 +55,7 @@ export function measure(study: Study, runs: Run[], records: ResearchRecord[]) {
   return { eligible: good, excluded: runs.filter(r => !eligible(r)), brands: brands.map(b => ({ ...b, share: totalMentions ? b.mentions / totalMentions * 100 : null })),
     domains: [...domainMap.values()].map(d => ({ ...d, urls: [...d.urls], runIds: [...d.runIds], citedIds: [...d.citedIds], manualIds: [...d.manualIds], roles: [...d.roles] })).sort((a, b) => b.runIds.length - a.runIds.length),
     days, reviews, promptCount: new Set(good.map(r => r.prompt)).size, methods: [...new Set(good.map(r => r.environment))],
-    searchDisclosed: good.filter(r => r.normalized?.search_observation === "tool_activity_disclosed" || r.normalized?.search_observation === "search_ui_visible").length };
+    searchDisclosed: good.filter(r => r.normalized?.search_observation === "tool_activity_disclosed" || r.normalized?.search_observation === "search_ui_visible" || r.normalized?.search_observation === "search_results_disclosed").length };
 }
 export function starterQuestions(brand: string, profile: BrandProfile) {
   const category = profile.category.trim() || "products in this category";
@@ -98,4 +99,8 @@ export function validateAnalysis(raw: any, runs: Run[], facts: ResearchRecord[])
       recommendation: typeof f.recommendation === "string" ? f.recommendation.slice(0, 3000) : "", status: "needs_review" }];
   });
   return { themes, findings, rejectedEvidence: rejected, summary: typeof raw.summary === "string" ? raw.summary.slice(0, 3000) : "", methodVersion: "narrative-review-v1", status: "needs_review" };
+}
+
+export function reviewedThemes(analysis:ResearchRecord|undefined,records:ResearchRecord[]){
+ if(!analysis)return [];return (analysis.payload.themes||[]).map((item:any,index:number)=>{const review=records.filter(r=>r.kind==="classification"&&r.payload.method==="human_analysis_review"&&r.payload.analysisId===analysis.id&&r.payload.section==="themes"&&r.payload.index===index).sort((a,b)=>b.updated_at.localeCompare(a.updated_at))[0];return {...item,index,review,status:review?.payload.verdict||"needs_review",title:review?.payload.title||item.title,description:review?.payload.interpretation||item.description};}).filter((item:any)=>item.status!=="rejected");
 }

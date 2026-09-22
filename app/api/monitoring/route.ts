@@ -1,3 +1,5 @@
+import { getChatGPTUser } from "@/app/chatgpt-auth";
+import { deliverNotification } from "@/lib/notifications";
 import { z } from "zod";
 import { AppError, audit, db, failure, hash, idSchema, jsonBody, ownStudy, owner, reply } from "@/lib/server";
 import { connectionFor, openSecret } from "@/lib/vault";
@@ -8,10 +10,25 @@ export async function GET(req:Request){try{
   const actor=await owner(req),p=new URL(req.url).searchParams,studyId=idSchema.parse(p.get("studyId")),study=await ownStudy(studyId,actor);
   const rows=await db().prepare("SELECT id,name,config,status,schedule_id,last_tick,created_at,updated_at FROM monitors WHERE study_id=? AND owner_id=? ORDER BY created_at DESC").bind(studyId,study.owner_id).all<any>();
   const tickets=await db().prepare("SELECT t.job_id,t.status,t.message_id,t.error,t.created_at,t.expires_at FROM execution_tickets t JOIN collection_jobs j ON j.id=t.job_id WHERE j.study_id=? AND t.owner_id=? ORDER BY t.created_at DESC LIMIT 200").bind(studyId,study.owner_id).all();
-  return reply({monitors:rows.results.map(r=>({...r,config:JSON.parse(r.config)})),tickets:tickets.results,canManage:study.access_role==="owner"});
+  const notifications=await db().prepare("SELECT id,kind,target_id,status,response,error,first_attempt,last_attempt,created_at FROM notification_outbox WHERE study_id=? AND owner_id=? ORDER BY created_at DESC LIMIT 100").bind(studyId,study.owner_id).all();
+  const recipients=study.access_role==="owner"?[...new Set([(await getChatGPTUser())!.email.toLowerCase(),...(await db().prepare("SELECT email FROM study_members WHERE study_id=?").bind(studyId).all<any>()).results.map(m=>m.email.toLowerCase())])]:[];
+  return reply({notifications:notifications.results,recipients,monitors:rows.results.map(r=>({...r,config:JSON.parse(r.config)})),tickets:tickets.results,canManage:study.access_role==="owner"});
 }catch(e){return failure(e);}}
 export async function POST(req:Request){try{
   const actor=await owner(req,true),body=await jsonBody(req),studyId=idSchema.parse(body.studyId),study=await ownStudy(studyId,actor,"owner"),now=new Date().toISOString(),origin=new URL(req.url).origin;
+  if(body.action==="deliver_notification"){
+    const id=z.string().regex(/^[a-f0-9]{64}$/).parse(body.id),row=await db().prepare("SELECT id FROM notification_outbox WHERE id=? AND study_id=? AND owner_id=?").bind(id,studyId,actor).first();if(!row)throw new AppError("Notification not found.",404);
+    const result=await deliverNotification(id,actor);await audit(studyId,actor,"notification_delivery_requested",id,{status:result.status});return reply(result);
+  }
+  if(body.action==="configure_delivery"){
+    const v=z.object({id:idSchema,enabled:z.boolean(),connectionId:idSchema.optional(),from:z.string().email().optional(),recipients:z.array(z.string().email()).max(10).default([]),acknowledge:z.literal(true)}).parse(body);
+    const monitor=await db().prepare("SELECT id FROM monitors WHERE id=? AND study_id=? AND owner_id=?").bind(v.id,studyId,actor).first();if(!monitor)throw new AppError("Monitor not found.",404);
+    const ownerEmail=(await getChatGPTUser())!.email.toLowerCase(),members=await db().prepare("SELECT email FROM study_members WHERE study_id=?").bind(studyId).all<any>(),allowed=new Set([ownerEmail,...members.results.map(m=>m.email.toLowerCase())]),recipients=[...new Set(v.recipients.map(s=>s.toLowerCase()))];
+    if(v.enabled){if(!v.connectionId||!v.from||!recipients.length)throw new AppError("Choose a delivery connection, verified sender, and at least one recipient.");await connectionFor(actor,v.connectionId,"resend");if(recipients.some(email=>!allowed.has(email)))throw new AppError("Recipients must be the owner or accepted members of this brand workspace.");}
+    const delivery={enabled:v.enabled,connectionId:v.connectionId,from:v.from,recipients,ownerEmail,origin};
+    await db().batch([db().prepare("UPDATE monitors SET config=json_set(config,'$.delivery',json(?)),updated_at=? WHERE id=?").bind(JSON.stringify(delivery),now,v.id),db().prepare("UPDATE notification_outbox SET status='cancelled',error='Delivery settings changed.' WHERE monitor_id=? AND status IN ('queued','failed','uncertain')").bind(v.id)]);
+    await audit(studyId,actor,"notification_preferences_changed",v.id,{enabled:v.enabled,recipients:recipients.length});return reply({id:v.id,delivery});
+  }
   if(body.action==="probe")return reply({reachable:await callbackReachable(origin),origin});
   if(body.action==="dispatch"){
     const v=z.object({batchId:idSchema,queueConnectionId:idSchema,connections:z.record(idSchema)}).parse(body);
@@ -36,7 +53,7 @@ export async function POST(req:Request){try{
   }
   if(body.action==="save"){
     const v=z.object({id:idSchema.optional(),name:z.string().trim().min(1).max(120),config:configSchema}).parse(body);
-    if(v.id){const previous=await db().prepare("SELECT status FROM monitors WHERE id=? AND study_id=? AND owner_id=?").bind(v.id,studyId,actor).first<any>();if(!previous)throw new AppError("Monitor not found.",404);if(previous.status==="active")throw new AppError("Pause the monitor before changing its protocol.",409);}
+    if(v.id){const previous=await db().prepare("SELECT status FROM monitors WHERE id=? AND study_id=? AND owner_id=?").bind(v.id,studyId,actor).first<any>();if(!previous)throw new AppError("Monitor not found.",404);if(["active","activating","activation_unknown"].includes(previous.status))throw new AppError("Pause the monitor before changing its protocol.",409);}
     const connection=await connectionFor(actor,v.config.connectionId);if(!["openai","anthropic","gemini","perplexity_api","xai"].includes(connection.provider)||!connection.model)throw new AppError("Choose a saved provider connection with a model ID.");
     await connectionFor(actor,v.config.queueConnectionId,"qstash");
     const grant=await db().prepare("SELECT request_limit,used_requests FROM study_connections WHERE study_id=? AND connection_id=?").bind(studyId,connection.id).first<any>();
@@ -50,8 +67,10 @@ export async function POST(req:Request){try{
     await audit(studyId,actor,"monitor_saved",id,{questions:questions.length,requestsPerRun:questions.length*v.config.repeats});return reply({id},201);
   }
   const id=idSchema.parse(body.id),monitor=await db().prepare("SELECT * FROM monitors WHERE id=? AND study_id=? AND owner_id=?").bind(id,studyId,actor).first<any>();if(!monitor)throw new AppError("Monitor not found.",404);
-  const config=JSON.parse(monitor.config),queue=await connectionFor(actor,config.queueConnectionId,"qstash"),key=await openSecret(queue);
+  const config=JSON.parse(monitor.config);
   if(body.action==="activate"){
+    if(["active","activating"].includes(monitor.status))throw new AppError("This schedule is already active or activating. Pause it before replacing it.",409);
+    const queue=await connectionFor(actor,config.queueConnectionId,"qstash"),key=await openSecret(queue);
     if(!await callbackReachable(origin))throw new AppError("Background delivery cannot reach this application. Resolve callback access in Connections before activating this schedule.",409);
     const token=randomToken(),scheduleId=`brand-${id}`,cron=`0 ${config.hourUTC} * * ${config.cadence==="weekly"?config.weekday:"*"}`;
     // Activate the database credential first. A failed external operation is visible as activation_unknown.
@@ -66,7 +85,7 @@ export async function POST(req:Request){try{
     // Local pause blocks future callbacks immediately, even if queue deletion fails.
     await db().prepare("UPDATE monitors SET status='paused',updated_at=? WHERE id=?").bind(now,id).run();
     let externalStopped=true;
-    if(monitor.schedule_id)try{await queueRequest(key,`/v2/schedules/${encodeURIComponent(monitor.schedule_id)}`,{}, {},"DELETE");}catch{externalStopped=false;}
+    if(monitor.schedule_id)try{const queue=await connectionFor(actor,config.queueConnectionId,"qstash"),key=await openSecret(queue);await queueRequest(key,`/v2/schedules/${encodeURIComponent(monitor.schedule_id)}`,{}, {},"DELETE");}catch{externalStopped=false;}
     await audit(studyId,actor,"monitor_paused",id,{externalStopped});return reply({id,status:"paused",externalStopped,note:externalStopped?null:"Collection is paused locally. Remove the schedule in your queue account to stop delivery charges."});
   }
   throw new AppError("Unknown monitoring operation.",404);

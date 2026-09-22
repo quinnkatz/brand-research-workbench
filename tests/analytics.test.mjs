@@ -38,3 +38,25 @@ test('Analysis discards invented run IDs, paraphrased quotes and nonexistent fac
   assert.equal(result.themes.length,1); assert.equal(result.rejectedEvidence,2);
   assert.deepEqual(result.findings[0].factIds,[]); assert.equal(result.status,'needs_review');
 });
+
+test('Matched comparisons separate changed protocols and exclude failures',async()=>{
+ const {createComparison}=await import('../lib/comparisons.ts');const c=createComparison(['Aster'],{from:'2026-08-01',to:'2026-08-31'},{from:'2026-09-01',to:'2026-09-30'});
+ const run=(id,text,date,changes={})=>({...fixture(id,text),created_at:date+'T12:00:00Z',settings:{questionVersion:'v1',questionContext:{purpose:'baseline',market:'US'}},...changes});
+ c.add(run('before','Aster is compact.','2026-08-05'));c.add(run('latest','Fern is compact.','2026-09-12'));c.add(run('earlier','Aster is compact.','2026-09-03'));
+ c.add(run('changed','Aster is compact.','2026-09-13',{settings:{questionVersion:'v2'}}));c.add(run('failed','','2026-09-13',{status:'failed'}));const result=c.result();assert.equal(result.denominator,1);assert.equal(result.change,-100);assert.equal(result.excluded.onlyAfter,1);assert.equal(result.excluded.failedOrEmpty,1);assert.equal(result.pairs[0].after.id,'latest');
+});
+test('Rejected interpretations disappear from the brand portrait; edits retain human wording',async()=>{
+ const {reviewedThemes}=await import('../lib/analytics.ts'),analysis={id:'analysis',payload:{themes:[{title:'Wrong',description:'Wrong'},{title:'Original',description:'Original'}]}};
+ const reviews=[0,1].map((index)=>({kind:'classification',updated_at:'2026-09-22',payload:{method:'human_analysis_review',analysisId:'analysis',section:'themes',index,verdict:index?'edited':'rejected',title:'Reviewed title',interpretation:'Reviewed interpretation'}}));
+ assert.deepEqual(reviewedThemes(analysis,reviews).map(t=>[t.title,t.description]),[['Reviewed title','Reviewed interpretation']]);
+});
+
+test('Full-study metrics count complete text before trimming display summaries',async()=>{
+ const {metricsAccumulator}=await import('../lib/study-metrics.ts'),a=metricsAccumulator(exampleStudy,[]);
+ a.add([fixture('late',`${'A long introduction. '.repeat(25)} Aster is recommended.`)]);a.add([fixture('absent','Fern alone.')]);const m=a.result();assert.equal(m.brands[0].mentions,1);assert.equal(m.brands[0].denominator,2);assert.equal(m.eligible[0].normalized.segments[0].text.includes('Aster'),false);assert.deepEqual(m.brands[0].runIds,['late']);
+});
+
+test('Recorded consumer personalization prevents a false matched comparison',async()=>{
+ const {createComparison}=await import('../lib/comparisons.ts'),c=createComparison(['Aster'],{from:'2026-08-01',to:'2026-08-31'},{from:'2026-09-01',to:'2026-09-30'});
+ const a={...fixture('a','Aster','complete','consumer'),created_at:'2026-08-10T00:00:00Z',settings:{memory:'off'}},b={...fixture('b','Fern','complete','consumer'),created_at:'2026-09-10T00:00:00Z',settings:{memory:'on'}};c.add(a);c.add(b);assert.equal(c.result().denominator,0);
+});

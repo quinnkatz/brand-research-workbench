@@ -37,3 +37,12 @@ export function reviewFacts(review: ResearchRecord, records: ResearchRecord[]): 
   if (Array.isArray(review.payload.factSnapshots)) return review.payload.factSnapshots;
   return (review.payload.factIds || []).map((id: string) => records.find(r => r.id === id && r.kind === "fact")).filter(Boolean);
 }
+
+// Cross-panel links open an exact unique quote, never a guessed occurrence.
+export function uniqueQuoteAnchor(run:Run,quote:string):SelectedClaim|null {
+  if(!quote)return null;const matches:SelectedClaim[]=[];
+  for(const [segmentIndex,segment] of (run.normalized?.segments||[]).entries()){
+    let start=segment.text.indexOf(quote);while(start!==-1){matches.push({segmentIndex,start,end:start+quote.length,text:quote});if(matches.length>1)return null;start=segment.text.indexOf(quote,start+1);}
+  }
+  return matches[0]||null;
+}

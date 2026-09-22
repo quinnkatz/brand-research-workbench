@@ -106,7 +106,7 @@ export async function POST(req: Request) {
       for (const q of questions) for (const p of providers) for (let repeat = 1; repeat <= v.repeats; repeat++) {
         const id = await hash(`${uid}:${v.requestId}:${q.id}:${p.provider}:${repeat}`);
         statements.push(db().prepare("INSERT OR IGNORE INTO collection_jobs (id, owner_id, study_id, batch_id, batch_name, provider, model, prompt, question_id, repeat_index, status, settings, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'queued', ?, ?, ?)")
-          .bind(id, uid, studyId, v.requestId, v.name, p.provider, p.model, q.payload.prompt, q.id, String(repeat), JSON.stringify({ search: v.search, maxTokens: v.maxTokens, intent: q.payload.intent, origin: q.payload.origin || "researcher", tags: q.payload.tags || [], questionVersion:q.updated_at, questionContext:{audience:q.payload.audience||"",market:q.payload.market||"",language:q.payload.language||"",productId:q.payload.productId,productSnapshot:q.payload.productSnapshot}, brandProfileSnapshot: study.profile }), now, now));
+          .bind(id, uid, studyId, v.requestId, v.name, p.provider, p.model, q.payload.prompt, q.id, String(repeat), JSON.stringify({ search: v.search, maxTokens: v.maxTokens, intent: q.payload.intent, origin: q.payload.origin || "researcher", tags: q.payload.tags || [], questionVersion:q.updated_at, questionContext:{topic:q.payload.topic||"",purpose:q.payload.purpose||"baseline",audience:q.payload.audience||"",market:q.payload.market||"",language:q.payload.language||"",productId:q.payload.productId,productSnapshot:q.payload.productSnapshot}, brandProfileSnapshot: study.profile }), now, now));
       }
       await db().batch(statements); return reply({ batchId: v.requestId, total }, 201);
     }
@@ -121,6 +121,7 @@ export async function POST(req: Request) {
     if (body.action === "cancel_plan") {
       const batchId = idSchema.parse(body.batchId);
       const result = await db().prepare("UPDATE collection_jobs SET status = 'cancelled', updated_at = ? WHERE owner_id = ? AND study_id = ? AND batch_id = ? AND status = 'queued'").bind(now, uid, studyId, batchId).run();
+      const terminal=await db().prepare("SELECT run_id FROM collection_jobs WHERE batch_id=? AND owner_id=? AND run_id IS NOT NULL ORDER BY updated_at DESC LIMIT 1").bind(batchId,uid).first<any>();if(terminal?.run_id)await afterCollection(uid,terminal.run_id);
       return reply({ cancelled: result.meta.changes });
     }
     if (body.action === "resolve_interrupted") {
@@ -130,6 +131,7 @@ export async function POST(req: Request) {
       if (!job) throw new AppError("Only a collection item pending for more than ten minutes can be marked interrupted.");
       const error = "Marked interrupted by the researcher. Provider processing and billing are unknown; no automatic retry.";
       await db().batch([db().prepare("UPDATE collection_jobs SET status = 'needs_attention', error = ?, updated_at = ? WHERE id = ? AND status = 'running'").bind(error, now, id), db().prepare("UPDATE runs SET status = 'failed', error = ?, finished_at = ? WHERE id = ? AND owner_id = ? AND status = 'running'").bind(error, now, job.run_id, uid)]);
+      if(job.run_id)await afterCollection(uid,job.run_id);
       return reply({ id });
     }
     if (body.action === "source") {

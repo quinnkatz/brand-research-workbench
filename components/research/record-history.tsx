@@ -1,0 +1,12 @@
+"use client";
+import { useState } from "react";
+import { History } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { Dialog,DialogContent,DialogHeader,DialogTitle,DialogDescription } from "@/components/ui/dialog";
+import { readResearch,displayDate } from "@/lib/client";
+import type { ResearchRecord } from "@/lib/research";
+export function RecordHistory({record,enabled=true}:{record:ResearchRecord;enabled?:boolean}){
+ const [open,setOpen]=useState(false),[versions,setVersions]=useState<{id:string;payload:Record<string,unknown>;recorded_at:string;current?:boolean}[]>([]),[busy,setBusy]=useState(false),[error,setError]=useState("");
+ async function show(){setOpen(true);setBusy(true);setError("");try{const data=await readResearch("history",{studyId:record.study_id,id:record.id});setVersions(data.versions);}catch(e){setError((e as Error).message);}finally{setBusy(false);}}
+ return <><Button size="sm" variant="ghost" disabled={!enabled} onClick={()=>void show()}><History size={14}/>History</Button><Dialog open={open} onOpenChange={setOpen}><DialogContent className="max-h-[85dvh] overflow-y-auto sm:max-w-2xl"><DialogHeader><DialogTitle>How this record changed</DialogTitle><DialogDescription>Earlier snapshots remain available. An edit does not rewrite references already saved inside a claim review.</DialogDescription></DialogHeader>{error&&<p role="alert" className="text-sm text-destructive">{error}</p>}{busy?<p role="status" className="text-sm">Loading previous versions…</p>:<div className="space-y-4">{[{id:record.id,payload:record.payload,recorded_at:record.updated_at,current:true},...versions].map((v,i,array)=>{const previous=array[i+1]?.payload,changed=previous?Object.keys(v.payload).filter(key=>JSON.stringify(v.payload[key])!==JSON.stringify(previous[key])):[];return <article key={v.id} className="rounded-lg border p-4"><p className="text-sm font-semibold">{v.current?"Current record":"Previous snapshot"} · {displayDate(v.recorded_at)}</p>{!!changed.length&&<p className="mt-2 text-xs leading-6 text-muted-foreground">Changed fields: {changed.map(k=>k.replace(/([A-Z])/g,' $1').toLowerCase()).join(', ')}</p>}<details className="mt-3" open={i===0}><summary className="cursor-pointer text-xs text-primary">Inspect the saved fields</summary><pre className="raw-json mt-3 rounded-lg bg-secondary/40 p-3">{JSON.stringify(v.payload,null,2)}</pre></details></article>;})}{!versions.length&&<p className="text-sm text-muted-foreground">No earlier versions are recorded.</p>}</div>}</DialogContent></Dialog></>;
+}

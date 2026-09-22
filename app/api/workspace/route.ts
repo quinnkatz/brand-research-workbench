@@ -4,7 +4,7 @@ import { AppError, audit, db, failure, hash, idSchema, jsonBody, owner, ownStudy
 import { connectionFor, openSecret, seal, vaultReady } from "@/lib/vault";
 export const dynamic = "force-dynamic";
 const label = z.string().trim().min(1).max(200);
-const providers = z.enum(["openai", "anthropic", "gemini", "perplexity_api", "xai", "qstash"]);
+const providers = z.enum(["openai", "anthropic", "gemini", "perplexity_api", "xai", "qstash", "resend"]);
 const tokenValue = () => crypto.randomUUID().replaceAll("-", "") + crypto.randomUUID().replaceAll("-", "");
 
 export async function GET(req: Request) {
@@ -53,7 +53,9 @@ export async function POST(req: Request) {
     }
     if (body.action === "disconnect") {
       const id = idSchema.parse(body.id); await connectionFor(actor, id);
-      const active = await db().prepare("SELECT id FROM monitors WHERE owner_id = ? AND status = 'active' AND (json_extract(config,'$.connectionId') = ? OR json_extract(config,'$.queueConnectionId') = ?) LIMIT 1").bind(actor,id,id).first();
+      const active = await db().prepare("SELECT id FROM monitors WHERE owner_id = ? AND status IN ('active','activating','activation_unknown') AND (json_extract(config,'$.connectionId') = ? OR json_extract(config,'$.queueConnectionId') = ?) LIMIT 1").bind(actor,id,id).first();
+      const delivery=await db().prepare("SELECT id FROM monitors WHERE owner_id=? AND json_extract(config,'$.delivery.enabled')=1 AND json_extract(config,'$.delivery.connectionId')=? LIMIT 1").bind(actor,id).first();
+      if(delivery)throw new AppError("Disable email delivery using this connection before removing it.",409);
       if (active) throw new AppError("Pause monitors using this connection before removing it.", 409);
       await db().batch([db().prepare("DELETE FROM study_connections WHERE connection_id = ?").bind(id), db().prepare("DELETE FROM connections WHERE id = ? AND owner_id = ?").bind(id, actor)]);
       return reply({ id });
@@ -73,7 +75,7 @@ export async function POST(req: Request) {
     }
     const studyId = idSchema.parse(body.studyId);
     const ownerActions = ["invite", "revoke_invite", "member", "grant_connection"];
-    await ownStudy(studyId, actor, ownerActions.includes(body.action) ? "owner" : "write");
+    await ownStudy(studyId, actor, ownerActions.includes(body.action) ? "owner" : body.action === "draft" ? "read" : "write");
     if (body.action === "invite") {
       const v = z.object({ email: z.string().trim().email().max(254), role: z.enum(["editor", "viewer"]) }).parse(body);
       const id = crypto.randomUUID(), token = tokenValue(), expiresAt = new Date(Date.now() + 7 * 86400000).toISOString();
@@ -87,6 +89,9 @@ export async function POST(req: Request) {
     }
     if (body.action === "member") {
       const v = z.object({ id:idSchema, role:z.enum(["editor","viewer","remove"]) }).parse(body);
+      const member=await db().prepare("SELECT email FROM study_members WHERE id=? AND study_id=?").bind(v.id,studyId).first<any>();
+      if(!member)throw new AppError("Member not found.",404);
+      await db().prepare("UPDATE study_invites SET revoked_at=? WHERE study_id=? AND email=? AND accepted_at IS NULL AND revoked_at IS NULL").bind(now,studyId,member.email).run();
       if (v.role === "remove") await db().prepare("DELETE FROM study_members WHERE id=? AND study_id=?").bind(v.id,studyId).run();
       else await db().prepare("UPDATE study_members SET role=? WHERE id=? AND study_id=?").bind(v.role,v.id,studyId).run();
       await audit(studyId,actor,"member_access_changed",v.id,{role:v.role}); return reply({ id:v.id });
@@ -94,7 +99,7 @@ export async function POST(req: Request) {
     if (body.action === "grant_connection") {
       const v = z.object({ connectionId:idSchema, requestLimit:z.number().int().min(0).max(100000) }).parse(body);
       const row = await connectionFor(actor,v.connectionId);
-      if (row.provider === "qstash") throw new AppError("The queue connection is managed by the owner and cannot be granted as a provider.");
+      if (["qstash","resend"].includes(row.provider)) throw new AppError("The queue connection is managed by the owner and cannot be granted as a provider.");
       await db().prepare("INSERT INTO study_connections (id,study_id,connection_id,request_limit,used_requests,created_at) VALUES (?,?,?,?,0,?) ON CONFLICT(study_id,connection_id) DO UPDATE SET request_limit=excluded.request_limit").bind(crypto.randomUUID(),studyId,v.connectionId,v.requestLimit,now).run();
       await audit(studyId,actor,"request_allowance_changed",v.connectionId,{requestLimit:v.requestLimit}); return reply({ granted:true });
     }

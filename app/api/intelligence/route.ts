@@ -2,6 +2,7 @@ import { z } from "zod";
 import { AppError, audit, bucket, db, failure, hash, idSchema, jsonBody, ownStudy, owner, publicRecord, reply, urlSchema } from "@/lib/server";
 import { appendRecord, providerCall, publicStudy } from "@/lib/research-server";
 import { studyRecords, selectedEvidence } from "@/lib/evidence-query";
+import { eligible } from "@/lib/analytics";
 import { savedKey } from "@/lib/vault";
 import { answerOf, type ResearchRecord } from "@/lib/research";
 import { auditPage } from "@/lib/readiness";
@@ -54,6 +55,8 @@ export async function POST(req:Request){try{
   if(body.action==="classification"){
     const v=recordRef.extend({runId:idSchema,brand:text(120),label:z.enum(["positive","negative","mixed","neutral","unknown"]),recommendation:z.enum(["recommended","mentioned","not_recommended","absent","unknown"]),rank:z.number().int().min(1).max(100).nullable(),quote:z.string().max(6000),explanation:text(4000),criteria:text(2000),exceptionQuotes:z.array(z.string().min(8).max(3000)).max(8)}).parse(body);
     const [run]=await selectedEvidence(uid,studyId,[v.runId]),answer=answerOf(run);
+    if(!eligible(run))throw new AppError("Classify a completed, non-empty observation. A failed or empty response cannot establish brand absence.");
+    if(![study.brand,...(study.profile?.competitors||[]).map((c:any)=>c.name)].includes(v.brand))throw new AppError("Choose the brand or a configured competitor.");
     if(v.quote&&!answer.includes(v.quote)||v.exceptionQuotes.some(q=>!answer.includes(q)))throw new AppError("Every quoted passage must match the recorded answer exactly.");
     if((v.label!=="unknown"||["recommended","not_recommended"].includes(v.recommendation)||v.rank!==null)&&v.quote.trim().length<8)throw new AppError("Include the exact passage supporting this classification.");
     const {id,expectedUpdatedAt,...payload}=v;const saved=await saveVersion(uid,studyId,"classification",{...payload,method:"human_classification",reviewer:actor},id,expectedUpdatedAt);await audit(studyId,actor,"classification_saved",saved,{runId:v.runId});return reply({id:saved},201);
@@ -94,7 +97,7 @@ export async function POST(req:Request){try{
     const id=crypto.randomUUID(),key=v.connectionId?await savedKey(uid,studyId,v.provider,v.connectionId,id):z.string().min(10).parse(v.key);
     const result=await providerCall(v.provider,v.model,instruction,key),original=JSON.stringify({createdAt:now,input,request:result.request,response:result.raw,responseText:result.responseText,httpStatus:result.httpStatus});
     await bucket().put(`${uid}/intelligence/${id}.json`,original,{httpMetadata:{contentType:"application/json"}});
-    let payload:any={question:v.question,provider:v.provider,model:v.model,status:"failed",sections:[],proposals:[],unanswered:[],inputRunIds:v.runIds,inputRecordIds:v.recordIds,originalHash:await hash(original),methodVersion:"evidence-assistant-v1",error:"The response requires inspection."};
+    let payload:any={question:v.question,provider:v.provider,model:v.model,status:"failed",sections:[],proposals:[],unanswered:[],inputRunIds:v.runIds,inputRecordIds:v.recordIds,inputRecordSnapshots:records.filter(r=>v.recordIds.includes(r.id)),originalHash:await hash(original),methodVersion:"evidence-assistant-v1",error:"The response requires inspection."};
     try{
       if(!result.ok||result.normalized.completion!=="complete")throw new Error("No complete answer was returned. Inspect the preserved response.");
       const raw=JSON.parse(result.normalized.segments.map(s=>s.text).join("\n").trim().replace(/^```(?:json)?\s*/i,"").replace(/\s*```$/,""));let rejected=0;
@@ -107,11 +110,11 @@ export async function POST(req:Request){try{
     await db().prepare("INSERT INTO records (id,owner_id,study_id,kind,payload,created_at,updated_at) VALUES (?,?,?,?,?,?,?)").bind(id,uid,studyId,body.action,JSON.stringify(payload),now,now).run();await audit(studyId,actor,`${body.action}_created`,id);return reply({id,status:payload.status},201);
   }
   if(body.action==="save_view"){
-    const v=recordRef.extend({name:text(120),scope:z.object({environment:z.string().max(30),provider:z.string().max(40),intent:z.string().max(40),from:z.string().max(10),to:z.string().max(10),query:z.string().max(300)})}).parse(body);
+    const v=recordRef.extend({name:text(120),scope:z.object({environment:z.string().max(30),provider:z.string().max(40),intent:z.string().max(40),from:z.string().max(10),to:z.string().max(10),query:z.string().max(300),topic:z.string().max(100).default("all"),audience:z.string().max(300).default("all"),market:z.string().max(100).default("all"),language:z.string().max(100).default("all"),purpose:z.string().max(50).default("all"),productId:z.string().max(50).default("all")})}).parse(body);
     const {id,expectedUpdatedAt,...payload}=v;return reply({id:await saveVersion(uid,studyId,"view",payload,id,expectedUpdatedAt)});
   }
   if(body.action==="alert_status"){
-    const v=recordRef.extend({id:idSchema,status:z.enum(["unreviewed","investigating","acknowledged","dismissed"]),note:optional(4000)}).parse(body);
+    const v=recordRef.extend({id:z.union([idSchema,z.string().regex(/^[a-f0-9]{64}$/)]),status:z.enum(["unreviewed","investigating","acknowledged","dismissed"]),note:optional(4000)}).parse(body);
     const old=(await studyRecords(uid,studyId)).find(r=>r.id===v.id&&r.kind==="alert");if(!old)throw new AppError("Alert not found.",404);await saveVersion(uid,studyId,"alert",{...old.payload,status:v.status,note:v.note},v.id,v.expectedUpdatedAt);return reply({id:v.id});
   }
   throw new AppError("Unknown intelligence operation.",404);

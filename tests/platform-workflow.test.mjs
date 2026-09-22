@@ -6,7 +6,7 @@ import test from 'node:test';
 const require=createRequire(import.meta.url),{Miniflare}=createRequire(require.resolve('wrangler/package.json'))('miniflare');
 
 test('Client roles, encrypted connections, quotas, callback replay, challenges and evidence tools form one isolated workflow',async()=>{
-  const messages=[],schedules=[];let providerCalls=0,reachable=true,providerFailure=false,query='Aster is compact.',queueCalls=0;
+  const messages=[],schedules=[],emails=[];let emailFailure=false;let providerCalls=0,reachable=true,providerFailure=false,query='Aster is compact.',queueCalls=0;
   const mf=new Miniflare({modules:['index.js',...readdirSync('dist/server',{recursive:true}).filter(p=>/\.m?js$/.test(p)&&p!=='index.js')].map(p=>({type:'ESModule',path:resolve('dist/server',p)})),modulesRoot:resolve('dist/server'),compatibilityDate:'2026-05-15',compatibilityFlags:['nodejs_compat'],d1Databases:['DB'],r2Buckets:['BUCKET'],bindings:{VAULT_MASTER_KEY:Buffer.alloc(32,7).toString('base64')},outboundService:async req=>{
     const url=new URL(req.url);
     if(url.hostname==='workbench.test'&&url.pathname==='/api/dispatch')return reachable?Response.json({service:'brand-research-dispatch-v1'}):new Response('Sign in',{status:302,headers:{location:'/signin'}});
@@ -16,6 +16,10 @@ test('Client roles, encrypted connections, quotas, callback replay, challenges a
       assert.equal(JSON.stringify(item).includes('test-provider-credential'),false);assert.equal(JSON.stringify(item).includes('Which coffee'),false);
       if(url.pathname.startsWith('/v2/publish/')){messages.push(item);return Response.json({messageId:`message-${messages.length}`});}
       schedules.push(item);return Response.json({scheduleId:req.headers.get('upstash-schedule-id')||'existing-schedule'});
+    }
+    if(url.hostname==='api.resend.com'){
+      assert.equal(url.pathname,'/emails/batch');assert.equal(req.headers.get('authorization'),'Bearer synthetic-email-credential');
+      const body=await req.json();emails.push({body,key:req.headers.get('idempotency-key')});if(emailFailure)return new Response('Synthetic unavailable',{status:503});return Response.json({data:body.map((_,i)=>({id:`email-${emails.length}-${i}`}))});
     }
     if(url.hostname==='api.openai.com'){
       providerCalls++;assert.equal(req.headers.get('authorization'),'Bearer test-provider-credential');if(providerFailure)return Response.json({error:'Synthetic rate limit'},{status:429});const body=await req.json();let answer=query;
@@ -74,6 +78,7 @@ test('Client roles, encrypted connections, quotas, callback replay, challenges a
     await json(await post('intelligence',{action:'resolve_challenge',studyId,id:c.id,expectedUpdatedAt:c.updated_at,message:'Checking the edition.',status:'investigating',resolution:'',evidenceRunIds:[runId]},'editor'));
     assert.equal((await post('intelligence',{action:'classification',studyId,runId,brand:'Aster',label:'positive',recommendation:'recommended',rank:1,quote:'Made-up sentence.',explanation:'No',criteria:'No',exceptionQuotes:[]},'editor')).status,400);
     await json(await post('intelligence',{action:'classification',studyId,runId,brand:'Aster',label:'neutral',recommendation:'mentioned',rank:null,quote:'Aster is compact.',explanation:'A dimensional description.',criteria:'Descriptive language without endorsement.',exceptionQuotes:[]},'editor'),201);
+    await json(await post('workspace',{action:'draft',studyId,name:'pinned-evidence',payload:{pins:[]},version:0},'viewer'));
     const draft=await json(await post('workspace',{action:'draft',studyId,name:'research-note',payload:{text:'Original'},version:0},'editor'));assert.equal(draft.version,1);
     assert.equal((await post('workspace',{action:'draft',studyId,name:'research-note',payload:{text:'Stale'},version:0},'editor')).status,409);
     assert.equal((await json(await get('workspace',{action:'draft',studyId,name:'research-note'},'owner'))).draft,null);
@@ -90,10 +95,24 @@ test('Client roles, encrypted connections, quotas, callback replay, challenges a
     const assistant=await json(await post('intelligence',{action:'assistant',studyId,question:'What is described?',runIds:[runId],recordIds:[],provider:'openai',model:'test-model',connectionId},'editor'),201);
     records=(await json(await get('workbench',{action:'state',studyId}))).records;const answer=records.find(r=>r.id===assistant.id);assert.equal(answer.payload.sections.length,1);assert.equal(answer.payload.rejected,1);assert.equal(answer.payload.status,'needs_review');
     const {id:monitorId}=await json(await post('monitoring',{action:'save',studyId,name:'Weekly test',config:{questionIds:[questionId],connectionId,queueConnectionId:queueId,repeats:1,search:'off',maxTokens:1024,cadence:'weekly',hourUTC:13,weekday:1,report:true}}),201);
+    const {id:emailId}=await json(await post('workspace',{action:'connection',provider:'resend',label:'Synthetic delivery',model:'',key:'synthetic-email-credential'}),201);
+    assert.equal((await post('monitoring',{action:'configure_delivery',studyId,id:monitorId,enabled:true,connectionId:emailId,from:'research@brand-public.com',recipients:['stranger@example.test'],acknowledge:true})).status,400);
+    await json(await post('monitoring',{action:'configure_delivery',studyId,id:monitorId,enabled:true,connectionId:emailId,from:'research@brand-public.com',recipients:['owner@example.test','viewer@example.test'],acknowledge:true}));
     await json(await post('monitoring',{action:'activate',studyId,id:monitorId}));const schedule=schedules.at(-1);assert.equal(schedule.headers['upstash-cron'],'0 13 * * 1');
     const tick=()=>mf.dispatchFetch('https://workbench.test/api/dispatch',{method:'POST',headers:{'content-type':'application/json',authorization:schedule.headers['upstash-forward-authorization']},body:JSON.stringify(schedule.body)});
     const tick1=await json(await tick()),tick2=await json(await tick());assert.equal(tick1.batchId,tick2.batchId);assert.equal((await db.prepare('SELECT count(*) n FROM monitor_ticks').first()).n,1);
     const monitorMessage=messages.at(-1);query='Fern is compact.';await json(await mf.dispatchFetch('https://workbench.test/api/dispatch',{method:'POST',headers:{'content-type':'application/json',authorization:monitorMessage.headers['upstash-forward-authorization']},body:JSON.stringify(monitorMessage.body)}));
+    const deliveryState=await json(await get('monitoring',{studyId}));assert.equal(deliveryState.notifications.length,1);assert.equal(deliveryState.notifications[0].status,'accepted');assert.equal(emails.length,1);assert.equal(emails[0].body.length,2);assert.equal(emails[0].body[0].text.includes('Bearer'),false);
+    await json(await post('monitoring',{action:'deliver_notification',studyId,id:deliveryState.notifications[0].id}));assert.equal(emails.length,1);
+    assert.equal((await post('monitoring',{action:'deliver_notification',studyId,id:deliveryState.notifications[0].id},'viewer')).status,403);
+    const retryId='a'.repeat(64),expiredId='b'.repeat(64);
+    await db.prepare("INSERT INTO notification_outbox (id,owner_id,study_id,monitor_id,connection_id,kind,target_id,payload,status,created_at) SELECT ?,owner_id,study_id,monitor_id,connection_id,kind,target_id,payload,'queued',created_at FROM notification_outbox WHERE id=?").bind(retryId,deliveryState.notifications[0].id).run();
+    emailFailure=true;const uncertain=await json(await post('monitoring',{action:'deliver_notification',studyId,id:retryId}));assert.equal(uncertain.status,'uncertain');emailFailure=false;
+    await json(await post('monitoring',{action:'deliver_notification',studyId,id:retryId}));assert.equal(emails.at(-1).key,emails.at(-2).key);assert.deepEqual(emails.at(-1).body,emails.at(-2).body);
+    await db.prepare("INSERT INTO notification_outbox (id,owner_id,study_id,monitor_id,connection_id,kind,target_id,payload,status,first_attempt,created_at) SELECT ?,owner_id,study_id,monitor_id,connection_id,kind,target_id,payload,'uncertain','2020-01-01T00:00:00.000Z',created_at FROM notification_outbox WHERE id=?").bind(expiredId,deliveryState.notifications[0].id).run();
+    const sentCount=emails.length;assert.equal((await post('monitoring',{action:'deliver_notification',studyId,id:expiredId})).status,409);assert.equal(emails.length,sentCount);
+    const alert=(await json(await get('workbench',{action:'state',studyId}))).records.find(r=>r.kind==='alert');assert.ok(alert,'Comparable mention change should create a reviewable alert');
+    await json(await post('intelligence',{action:'alert_status',studyId,id:alert.id,expectedUpdatedAt:alert.updated_at,status:'acknowledged',note:'Reviewed the pair.'}));
     const reports=(await json(await get('research',{action:'resources',studyId}))).reports;assert.ok(reports.some(r=>r.id===tick1.batchId));
     assert.equal((await get('research',{action:'report_document',studyId,id:tick1.batchId},'viewer')).status,200);
     await json(await post('monitoring',{action:'pause',studyId,id:monitorId}));const paused=await json(await tick());assert.equal(paused.status,'paused');
@@ -104,7 +123,12 @@ test('Client roles, encrypted connections, quotas, callback replay, challenges a
     const failedTick=await json(await mf.dispatchFetch('https://workbench.test/api/dispatch',{method:'POST',headers:{'content-type':'application/json',authorization:failedSchedule.headers['upstash-forward-authorization']},body:JSON.stringify(failedSchedule.body)}));
     providerFailure=true;const failedMessage=messages.at(-1);const failure=await json(await mf.dispatchFetch('https://workbench.test/api/dispatch',{method:'POST',headers:{'content-type':'application/json',authorization:failedMessage.headers['upstash-forward-authorization']},body:JSON.stringify(failedMessage.body)}));assert.equal(failure.status,'failed');
     assert.ok((await json(await get('research',{action:'resources',studyId}))).reports.some(r=>r.id===failedTick.batchId));providerFailure=false;
+    assert.equal((await post('intelligence',{action:'classification',studyId,runId:failure.id,brand:'Aster',label:'unknown',recommendation:'absent',rank:null,quote:'',explanation:'No answer',criteria:'No answer',exceptionQuotes:[]})).status,400);
+    await db.prepare("UPDATE connections SET ciphertext='unreadable' WHERE id=?").bind(queueId).run();
+    const stopped=await json(await post('monitoring',{action:'pause',studyId,id:failingMonitor.id}));assert.equal(stopped.status,'paused');assert.equal(stopped.externalStopped,false);
     const team=await json(await get('workspace',{action:'team',studyId}));await json(await post('workspace',{action:'member',studyId,id:team.members.find(m=>m.email==='viewer@example.test').id,role:'remove'}));
     assert.equal((await get('workbench',{action:'run',id:runId},'viewer')).status,404);
+    const revokedId='c'.repeat(64);await db.prepare("INSERT INTO notification_outbox (id,owner_id,study_id,monitor_id,connection_id,kind,target_id,payload,status,created_at) SELECT ?,owner_id,study_id,monitor_id,connection_id,kind,target_id,payload,'queued',created_at FROM notification_outbox WHERE id=?").bind(revokedId,deliveryState.notifications[0].id).run();
+    const beforeCancel=emails.length;assert.equal((await json(await post('monitoring',{action:'deliver_notification',studyId,id:revokedId}))).status,'cancelled');assert.equal(emails.length,beforeCancel);
   }finally{await mf.dispose();}
 });

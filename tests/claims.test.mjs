@@ -43,3 +43,9 @@ test('Report counts reviews only when the referenced response is included', () =
   const html = buildClientReport(exampleStudy, [], records);
   assert.ok(html.includes('No findings have been reviewed'));
 });
+
+test('Evidence links anchor only uniquely located exact quotes',async()=>{
+ const {uniqueQuoteAnchor}=await import('../lib/claims.ts');const run=structuredClone(exampleRuns[0]);run.normalized.segments=[{text:'One claim. Another claim.',raw_path:'$.test'}];
+ assert.deepEqual(uniqueQuoteAnchor(run,'Another claim.'),{segmentIndex:0,start:11,end:25,text:'Another claim.'});
+ run.normalized.segments.push({text:'Another claim.',raw_path:'$.test2'});assert.equal(uniqueQuoteAnchor(run,'Another claim.'),null);assert.equal(uniqueQuoteAnchor(run,'Invented'),null);
+});
