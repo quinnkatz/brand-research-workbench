@@ -47,3 +47,7 @@ next-env.d.ts
 
 # TypeScript incremental compiler cache
 *.tsbuildinfo
+
+# Local Python verification caches
+__pycache__/
+*.pyc

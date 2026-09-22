@@ -1,0 +1,6 @@
+{
+  "description": "Part A completion check; review and trust in a compatible Codex host before expecting automatic continuation.",
+  "hooks": {
+    "Stop": [{"hooks": [{"type": "command", "command": "python3 \"$(git rev-parse --show-toplevel)/scripts/completion_gate.py\" --hook", "timeout": 20, "statusMessage": "Checking customer-release completion"}]}]
+  }
+}

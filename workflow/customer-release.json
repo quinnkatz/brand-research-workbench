@@ -1,0 +1,98 @@
+{
+  "schemaVersion": 1,
+  "goal": "Customer-ready Part A brand investigation product",
+  "status": "not_customer_ready",
+  "items": [
+    {
+      "id": "customer_access",
+      "criterion": "A separately authorized customer can sign in and access only their study.",
+      "required": true,
+      "state": "blocked",
+      "dependency": "The Site remains owner-private; no intended pilot identity/audience is specified.",
+      "nextAction": "Configure the named pilot audience through Sites and verify owner/editor/viewer separation in a second real session.",
+      "provenance": null,
+      "evidence": null,
+      "evidenceSha256": null,
+      "reviewer": null,
+      "observedAt": null
+    },
+    {
+      "id": "live_api",
+      "criterion": "A real brand study collects actual answers through each API advertised as live.",
+      "required": true,
+      "state": "blocked",
+      "dependency": "Provider credentials and per-account model/search compatibility have not been supplied or verified.",
+      "nextAction": "Use secure Connections; record the real model, search mode, prompt, timestamps, answer, usage and disclosed citations. Mark unvalidated adapters honestly.",
+      "provenance": null,
+      "evidence": null,
+      "evidenceSha256": null,
+      "reviewer": null,
+      "observedAt": null
+    },
+    {
+      "id": "consumer_observation",
+      "criterion": "A real consumer-app answer is captured/imported with its known conditions and original evidence.",
+      "required": true,
+      "state": "blocked",
+      "dependency": "No real signed-in consumer capture session has been exercised.",
+      "nextAction": "Exercise the existing capture/import flow against a real account; confirm its consumer label, exact text, links and screenshot.",
+      "provenance": null,
+      "evidence": null,
+      "evidenceSha256": null,
+      "reviewer": null,
+      "observedAt": null
+    },
+    {
+      "id": "source_capture",
+      "criterion": "A disclosed public URL is retrieved successfully and its exact excerpt remains linked after recapture.",
+      "required": true,
+      "state": "blocked",
+      "dependency": "The real build-environment attempt failed on DNS resolution; only fixtures establish successful retrieval.",
+      "nextAction": "Try a supported disclosed URL from the deployed app and preserve a redacted successful capture/review/recapture receipt.",
+      "provenance": null,
+      "evidence": null,
+      "evidenceSha256": null,
+      "reviewer": null,
+      "observedAt": null
+    },
+    {
+      "id": "client_report",
+      "criterion": "A real client completes the answer-to-source-to-finding-to-challenge/report workflow.",
+      "required": true,
+      "state": "blocked",
+      "dependency": "No separate real-client end-to-end study has been performed.",
+      "nextAction": "Run the complete customer journey with real evidence, export/open the dated report and resolve one finding challenge.",
+      "provenance": null,
+      "evidence": null,
+      "evidenceSha256": null,
+      "reviewer": null,
+      "observedAt": null
+    },
+    {
+      "id": "monitoring",
+      "criterion": "Advertised unattended monitoring completes a real scheduled job without duplicate execution.",
+      "required": true,
+      "state": "blocked",
+      "dependency": "No QStash account; the current outer private gate blocks external callbacks.",
+      "nextAction": "Configure an authorized reachable callback and account without bypassing authentication; verify schedule, failure, pause and duplicate delivery.",
+      "provenance": null,
+      "evidence": null,
+      "evidenceSha256": null,
+      "reviewer": null,
+      "observedAt": null
+    },
+    {
+      "id": "email",
+      "criterion": "Advertised report emails reach an authorized test recipient with recorded delivery status.",
+      "required": true,
+      "state": "blocked",
+      "dependency": "No Resend connection, verified sender or selected real recipient is available.",
+      "nextAction": "Configure the intended sender/recipient and verify one real delivery and safe retry; never send to invented recipients.",
+      "provenance": null,
+      "evidence": null,
+      "evidenceSha256": null,
+      "reviewer": null,
+      "observedAt": null
+    }
+  ]
+}

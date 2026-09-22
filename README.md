@@ -64,3 +64,7 @@ The default Export downloads a streamed NDJSON archive containing study metadata
 Email delivery uses an immutable outbox payload and one idempotency key per monitored batch. Accepted members are rechecked before sending. Provider acceptance is not proof of inbox delivery. Uncertain retries reuse exactly the same payload/key and are blocked after 23 hours, within Resend's documented 24-hour idempotency window. Revoked recipients or changed preferences cancel pending delivery.
 
 Contracts checked for this increment: [D1 FTS5 support](https://developers.cloudflare.com/d1/sql-api/sql-statements/), [Resend batch delivery](https://resend.com/docs/api-reference/emails/send-batch-emails), [Resend idempotency](https://resend.com/docs/dashboard/emails/idempotency-keys).
+
+## Completion discipline
+
+[Project instructions](AGENTS.md) keep authorized work moving through fixes and deployment. [The completion workflow](workflow/COMPLETION.md) separates local software checks from real customer acceptance; `python3 scripts/completion_gate.py --check` must not report customer-ready while live dependencies remain unverified. The optional Stop hook is prepared for a compatible trusted Codex host; automatic activation in ChatGPT Work is not claimed.
