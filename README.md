@@ -1,5 +1,81 @@
 # Brand Research Workbench
 
+**A GEO/AEO research platform: it measures how AI assistants describe a brand, and traces every
+claim back to the source the model actually used.**
+
+Search is being replaced by answers. When a customer asks ChatGPT, Claude, Gemini or Perplexity
+what to buy, they get one synthesised recommendation instead of ten links — and the brand has no
+visibility into how it was described, what it was compared against, or which page the model leaned
+on. This platform measures that, as evidence rather than vibes.
+
+Built as a working system, not a demo: it runs on Cloudflare Workers with D1 and R2, signs users in
+through Cloudflare Access, encrypts each researcher's provider keys at rest, and preserves every
+original API response so any number in a report can be traced back to the answer that produced it.
+
+## What it does
+
+- **Collects** answers from OpenAI, Anthropic, Gemini, Perplexity and xAI through their own APIs,
+  with web search enabled, repeated N times per question so variance is visible.
+- **Preserves** each original response byte-for-byte in object storage with a SHA-256 hash, plus the
+  model id the provider actually returned, its disclosed search activity and its citations.
+- **Captures the sources**: fetches the pages a model cited, respects robots policy, stores the
+  retrieved bytes, and checks that quoted passages genuinely appear in them.
+- **Measures** brand presence, competitor sets and source exposure, and reports every rate with a
+  95% Wilson interval. Rates whose intervals overlap are never ranked against each other.
+- **Refuses to overclaim**: failed, empty and truncated answers are excluded from denominators
+  rather than counted as "the brand wasn't mentioned", and API answers are never merged with
+  consumer-app observations.
+- **Delivers** a dated client report where each finding links to the original answer and the
+  captured source behind it.
+
+## What it found (first live study, 22 September 2026)
+
+A study of **Audien Hearing**, a direct-to-consumer hearing aid brand, across a balanced design:
+5 customer questions × 4 engines (OpenAI `gpt-6-astra`, Anthropic `claude-opus-5-5`,
+Google `gemini-3.8-flash`, Perplexity `perplexity/sonar`) × 5 repeats = **100 complete answers**,
+web search enabled, each answer disclosing ~33 sources.
+
+**The brand is present when people are shopping, and absent when the category is on trial.**
+
+| Customer question | Audien named | 95% CI |
+|---|---|---|
+| "What should I know before buying Audien hearing aids?" | 20 / 20 | 84–100% |
+| "What are the most affordable hearing aids for mild hearing loss?" | 18 / 20 | 70–97% |
+| "What are the best over-the-counter hearing aids?" | 11 / 20 | 34–74% |
+| "Are cheap hearing aids worth it, or are they a scam?" | 1 / 20 | 1–24% |
+| "Do hearing aids damage your hearing?" | 0 / 20 | 0–16% |
+
+The gap between the commercial questions and the trust questions is larger than sampling error:
+those intervals do not overlap. The gap between "most affordable" and "best" is suggestive but
+**not** established at this sample size — those intervals overlap, so the study does not claim it.
+
+**Engines cannot be ranked from this sample.** OpenAI named the brand least (8/25, 17–52%) and
+Gemini and Anthropic most (15/25, 41–77%), but every interval overlaps every other, so the honest
+finding is that no engine is measurably different from another here.
+
+**The competitor set is crowded**, contradicting the assumption that a budget brand has few rivals:
+Jabra 48/100, Lexie 36, Apple AirPods 36, Elehear 32, Sennheiser 31, Sony 30, MDHearing 23,
+Eargo 22, Costco 16. Audien's 50/100 and Jabra's 48/100 overlap, so they are reported as level,
+not ranked.
+
+**The brand's own site is a minor source.** Across the 100 answers, `audienhearing.com` was
+disclosed as a source 12 times (7–20%) versus Reddit 25 times (18–34%), with the most cited
+domains being NCOA, HearingTracker, FDA, the American Academy of Audiology and NIDCD. Even in the
+50 answers that named Audien, its own site was cited in only 12 (14–37%).
+
+**What was thrown away, and why it matters.** Fifteen further responses were excluded rather than
+counted: ten Gemini answers truncated mid-sentence (the model spends part of its token budget on
+internal reasoning, so the cohort was re-run with a larger budget) and five Perplexity calls the
+provider rejected outright. Counting a truncated or failed answer as "the brand wasn't mentioned"
+would have quietly understated presence — the most common way this category of tool lies to itself.
+
+## Why the methodology is the point
+
+Anyone can print "you appear in 47% of answers". The harder questions are the ones this system is
+built around: 47% of *what* denominator, with what uncertainty at that sample size, from which
+model on which date, in the API or in the consumer app, and can you show me the answer it came
+from? Most of the engineering here exists to keep those questions answerable.
+
 A client research application for investigating how AI describes brands. It combines repeatable collection, inspectable original evidence, brand and competitor measurement, reviewed interpretation, and client delivery.
 
 ## Client journey
